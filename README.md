@@ -43,6 +43,11 @@ checks were skipped, so the server answers `READY_LOW_COVERAGE`, not healthy. On
 discovery fails and the server answers `DRAIN`. Neither proves any GPU check; see
 [What is not tested](#what-is-not-tested).
 
+[docs/evals/evals.xml](docs/evals/evals.xml) holds 10 questions an operator might ask, each needing
+several tool calls, with one checkable answer each: four on the catalog and six on fixture scenarios.
+One of them is a `PASS` whose right answer is low coverage, not healthy. `make evals` works out every
+answer through the built binary and fails if one is wrong. No model has been run against them yet.
+
 ## Standards
 
 Each requirement, its status, the test that proves it and the known gaps are in
@@ -74,9 +79,9 @@ Every argument is an enum or a bounded integer. `hv_get_verdict` takes `cadence`
 `xid_lookback_minutes`; it does not take a node ID, an execution context or an Xid end time, so serve's
 own defaults apply.
 
-**Read `scheduling_advice` and `coverage`, not only `overall_severity`.** A `PASS` where no GPU, NVLink
-or Xid check ran, as on a GPU that health-validation does not know, comes back as `READY_LOW_COVERAGE`.
-That is not healthy. The values are `READY`, `READY_LOW_COVERAGE`, `MONITOR`, `DRAIN`, `RETRY_COLLECTION`
+**Read `scheduling_advice` and `coverage`, not only `overall_severity`.** A `PASS` where no GPU or NVLink
+check ran, as on a GPU that health-validation does not know, comes back as `READY_LOW_COVERAGE`. Xid checks
+do not count: they only read the journal. That is not healthy. The values are `READY`, `READY_LOW_COVERAGE`, `MONITOR`, `DRAIN`, `RETRY_COLLECTION`
 and `NO_VERDICT`.
 
 Every tool's inputs, outputs and annotations: [docs/tools.md](docs/tools.md), generated from what the
@@ -225,7 +230,7 @@ Everything below was proven only with synthetic measurements judged by health-va
   fixture-only e2e tests (cancel, kill mid-call, second call, owner refusal) did not run against real serve.
 - **The published image:** `make e2e-image` passed once against a locally built image on the Pi, with
   the SIGTERM test skipped, since a signal reaches the docker client, not the server. Nothing is
-  published yet. `make scan` is not written yet and exits 1.
+  published yet. `make scan` was run by hand; see [Scans](#scans).
 - **Any architecture-scoped check**, as no available machine has a GPU health-validation knows.
 - **DCGM signals:** power, power limit, performance state, throttle, NVLink fabric.
 - **NVLink, InfiniBand and P2P** checks.
@@ -236,7 +241,19 @@ Everything below was proven only with synthetic measurements judged by health-va
 - **The race detector on arm64:** it cannot start on the Pi's kernel. It ran in an emulated amd64 container.
 - **The binaries for anything but Linux on arm64 and amd64:** linux/amd64 ran on the build machine; the
   others are cross-compiled and not run.
-- **Evaluations** (questions a model answers through the tools), Cisco `mcp-scanner`, Trivy and OSV.
+- **Evaluations run by a model.** `make evals` checks the answers mechanically; no model has answered them yet.
+- **Scans in CI:** `make scan` runs them by hand only (see below); no pipeline runs them yet.
+
+## Scans
+
+Run by hand on 2026-11-26 with `make scan` (needs `govulncheck`, `osv-scanner`, `trivy` and `mcp-scanner`):
+
+| Scanner | Result |
+|---|---|
+| Cisco `mcp-scanner` (YARA and schema, offline, evaluation on) | 5 tools, all safe |
+| OSV-scanner, both modules | 0 vulnerabilities |
+| Trivy, image (Debian 13 distroless, 21.7 MB) | 0 HIGH or CRITICAL |
+| govulncheck | 0 reachable. It lists GO-2026-6094 in `github.com/google/cel-go` v0.28.0, which health-validation v0.4.0-rc.1 pins and this code never calls. It is kept at that pin so the catalog tools evaluate rules with the same CEL as the serve they describe. |
 
 Every step, failure and dead end is in [docs/build-log.md](docs/build-log.md).
 

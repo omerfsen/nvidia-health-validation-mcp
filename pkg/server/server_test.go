@@ -217,6 +217,8 @@ func TestDescribeCheck(t *testing.T) {
 
 	h.server.calls = rate.NewLimiter(rate.Inf, 1)
 
+	assert.Equal(t, 16<<10, catalogview.MaxDescribeBytes, "the documented cap is 16 KiB")
+
 	for _, id := range catalogview.CheckIDEnum {
 		result := h.call(t, "hv_describe_check", map[string]any{"check_id": id})
 		require.False(t, result.IsError, "%s: %s", id, text(result))
@@ -235,8 +237,9 @@ func TestExplainRemediation(t *testing.T) {
 
 	reset := structured[catalogview.Remediation](t, h.call(t, "hv_explain_remediation",
 		map[string]any{"action": "reset_gpu"}))
-	assert.LessOrEqual(t, len(reset.RecommendedBy), catalogview.MaxRecommenders)
-	assert.Equal(t, reset.Total > catalogview.MaxRecommenders, reset.Truncated)
+	assert.Equal(t, 30, catalogview.MaxRecommenders, "the documented cap is 30 checks")
+	assert.LessOrEqual(t, len(reset.RecommendedBy), 30)
+	assert.Equal(t, reset.Total > 30, reset.Truncated)
 
 	ready := structured[catalogview.Remediation](t, h.call(t, "hv_explain_remediation",
 		map[string]any{"action": "reset_gpu", "operational_state": "ready"}))
@@ -350,6 +353,8 @@ func TestSchedulingAdvice(t *testing.T) {
 			severity: "UNKNOWN", state: "drain", actions: []string{"check_collection"},
 		},
 		{name: "unknown architecture", fixture: unknownArchitecture, advice: AdviceLowCoverage, low: true},
+		{name: "H200 at CONTINUOUS", fixture: h200Continuous, advice: AdviceLowCoverage, low: true},
+		{name: "no GPU measurements", fixture: noGPUMeasurement, advice: AdviceLowCoverage, low: true},
 		{name: "compute apps", fixture: computeApps, advice: AdviceDrain},
 		{name: "xid 79", fixture: xid79, advice: AdviceDrain},
 		{name: "discovery failure", fixture: discoveryFailure, advice: AdviceDrain, low: true},
@@ -391,6 +396,95 @@ func TestUnknownArchitectureIsNotReadAsHealthy(t *testing.T) {
 	assert.Zero(t, out.Coverage.GPUChecksRun)
 	assert.Positive(t, out.Coverage.SkippedByReason["SIGNAL_UNAVAILABLE_ARCHITECTURE"])
 	assert.Contains(t, out.Coverage.LowCoverageReason, "architecture")
+}
+
+// Xid checks only read the journal, so a PASS where only they ran is low coverage.
+func TestXidChecksAloneAreLowCoverage(t *testing.T) {
+	h := start(t, evaluateOn())
+
+	for name, fixture := range map[string]func(*testing.T) []byte{
+		"H200 at CONTINUOUS": h200Continuous, "GB200 without GPU measurements": noGPUMeasurement,
+	} {
+		out := h.verdict(t, fixture(t), map[string]any{"detail": "summary"})
+		assert.Equal(t, "PASS", out.Decision.OverallSeverity, name)
+		assert.Equal(t, AdviceLowCoverage, out.Decision.SchedulingAdvice, name)
+		assert.Positive(t, out.Coverage.XidChecksRun, name)
+		assert.Zero(t, out.Coverage.GPUChecksRun, name)
+		assert.Zero(t, out.Coverage.NVLinkChecksRun, name)
+		assert.Contains(t, out.Coverage.LowCoverageReason, "only read the journal", name)
+		assert.NotContains(t, out.Decision.Explanation, "were among them", name)
+	}
+
+	cadence := h.verdict(t, h200Continuous(t), nil)
+	assert.Positive(t, cadence.Coverage.SkippedByReason["CADENCE_MISMATCH"])
+	assert.Contains(t, cadence.Coverage.LowCoverageReason, "cadence")
+
+	ready := h.verdict(t, healthyGB200(t), nil)
+	assert.Equal(t, AdviceReady, ready.Decision.SchedulingAdvice)
+	assert.Positive(t, ready.Coverage.GPUChecksRun)
+}
+
+// A journal that cannot be read makes every Xid check UNKNOWN. That is not an Xid.
+func TestUnreadJournalIsNotAnXid(t *testing.T) {
+	h := start(t, evaluateOn())
+
+	for _, detail := range details {
+		out := h.verdict(t, journalUnread(t), map[string]any{"detail": detail})
+		assert.Equal(t, "UNKNOWN", out.Decision.OverallSeverity, detail)
+
+		var xids []Finding
+
+		for _, found := range out.Findings {
+			if strings.HasPrefix(found.CheckID, xidCheckPrefix) {
+				xids = append(xids, found)
+			}
+		}
+
+		require.Len(t, xids, 1, "the unread Xid checks fold into one finding (%s)", detail)
+		assert.Equal(t, "UNKNOWN", xids[0].Severity)
+		assert.Greater(t, xids[0].FoldedChecks, 10, detail)
+		assert.False(t, out.Truncated, "the folded checks take no finding slots")
+
+		if detail == detailSummary {
+			continue
+		}
+
+		require.Len(t, xids[0].Messages, 1)
+		assert.Contains(t, xids[0].Messages[0], "could not read the journal; no Xid was confirmed")
+		assert.Contains(t, xids[0].Messages[0], fmt.Sprintf("and %d other gpu_xid_* checks", xids[0].FoldedChecks))
+		assert.NotContains(t, xids[0].Messages[0], "fired")
+		assertClean(t, text(h.call(t, "hv_get_verdict", map[string]any{"detail": detail})))
+	}
+}
+
+// A compute process list that could not be read is not a process holding the GPU.
+func TestUnreadComputeAppsHoldNoProcess(t *testing.T) {
+	h := start(t, evaluateOn())
+
+	out := h.verdict(t, computeAppsUnread(t), map[string]any{"detail": "full"})
+	apps := findingFor(t, out, computeAppsCheck)
+	assert.Equal(t, "UNKNOWN", apps.Severity)
+	require.Len(t, apps.Messages, 1)
+	assert.Contains(t, apps.Messages[0], "could not be read, so no process was confirmed")
+	assert.NotContains(t, apps.Messages[0], "still hold")
+	assert.Nil(t, apps.ObservedValues)
+	assertClean(t, text(h.call(t, "hv_get_verdict", map[string]any{"detail": "full"})))
+
+	held := findingFor(t, h.verdict(t, computeApps(t), map[string]any{"detail": "failing"}), computeAppsCheck)
+	assert.Equal(t, "CRITICAL", held.Severity)
+	assert.Contains(t, held.Messages[0], "still hold this GPU")
+}
+
+// No more PIDs are shown than the count the check reported.
+func TestPIDsNeverExceedTheCount(t *testing.T) {
+	h := start(t, evaluateOn())
+
+	apps := findingFor(t, h.verdict(t, fewerProcessesThanPIDs(t), map[string]any{"detail": "failing"}),
+		computeAppsCheck)
+	require.Len(t, apps.Messages, 1)
+	assert.Contains(t, apps.Messages[0], "1 compute process(es)")
+	assert.Contains(t, apps.Messages[0], "PIDs: 4242.")
+	assert.NotContains(t, apps.Messages[0], "4343")
 }
 
 func TestNodeIDIsDropped(t *testing.T) {
@@ -496,6 +590,16 @@ func TestOtherTextIsCleanedAndFenced(t *testing.T) {
 		}
 	}
 
+	long := h.verdict(t, longMessage(t), map[string]any{"detail": "failing"})
+	cut := findingFor(t, long, "architecture_discovery")
+	require.Len(t, cut.Messages, 1)
+	assert.True(t, cut.Truncated, "a cut message is flagged")
+	assert.NotContains(t, cut.Messages[0], "TAIL")
+	// The documented cap is 300 bytes of text inside the fence, plus "…".
+	inside := strings.TrimSuffix(strings.TrimPrefix(cut.Messages[0], "<"+long.FenceMarker+">"), "</"+long.FenceMarker+">")
+	assert.Equal(t, strings.Repeat("x", 300)+"…", inside)
+
+	h.fake.set(monitorOnly(t))
 	warning := findingFor(t, structured[VerdictOutput](t, h.call(t, "hv_get_verdict", map[string]any{"detail": "failing"})),
 		"gpu_xid_unknown")
 	assert.Equal(t, []string{gpu0}, warning.Entities)
@@ -740,13 +844,14 @@ func TestEvaluateIsRateLimited(t *testing.T) {
 
 func TestToolCallsAreRateLimited(t *testing.T) {
 	h := start(t, setup{})
-	assert.InDelta(t, callsPerSecond, float64(h.server.calls.Limit()), 0)
-	assert.Equal(t, callBurst, h.server.calls.Burst())
+	// The documented limit: 10 per second, burst 20.
+	assert.InDelta(t, 10, float64(h.server.calls.Limit()), 0)
+	assert.Equal(t, 20, h.server.calls.Burst())
 
 	// No refill during the test, so it does not depend on how fast the machine is.
 	h.server.calls = rate.NewLimiter(rate.Every(time.Hour), callBurst)
 
-	for range callBurst {
+	for range 20 {
 		assert.False(t, h.call(t, "hv_explain_remediation", map[string]any{"action": "hold"}).IsError)
 	}
 

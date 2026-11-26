@@ -28,11 +28,14 @@ they go stale.
 |---|---|---|---|
 | [`server/discover`](https://modelcontextprotocol.io/specification/2026-07-28/changelog.md) answers versions, capabilities, identity (`serverInfo` in `_meta`) | MUST | Yes, from the SDK | `TestItSpeaksTheLatestProtocol`, in `cmd/` and (e2e) |
 | `resultType` on every result, `ttlMs` and `cacheScope` on `tools/list` | MUST | Yes, from the SDK | same |
-| Older revisions, through `initialize` | MAY | The SDK offers them back to 2024-11-05 | **Not tested**: the SDK's own client tries `server/discover` first |
+| Older revisions, through `initialize` | MAY | Yes: 2025-11-25, 2025-06-18, 2025-03-26 and 2024-11-05 are echoed back, with capabilities `{tools:{}}`. 2026-07-28 has no `initialize`, so asking for it, or for an unknown version, there gets 2025-11-25. Through `_meta`, an unknown version gets -32022 with the supported list (seen on the wire, not tested) | `TestOlderRevisionsThroughInitialize` |
 | [stdout holds only MCP messages](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio.md), logs go to stderr | MUST | Yes | `TestItSpeaksTheLatestProtocol` fails on any stdout line that is not JSON, and finds the log on stderr |
 | Exit when stdin closes | SHOULD | Yes, and a running evaluation is cancelled | `TestItSpeaksTheLatestProtocol` (e2e), `TestStdinCloseCancelsEvaluate` |
 | [Stop work on `notifications/cancelled`](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/cancellation.md) | SHOULD | Yes: the handler follows the request's context, which the SDK cancels, and serve sees the request cancelled | `TestCancelNotificationReachesServe` (e2e) |
-| Send no reply to a cancelled request | SHOULD on that page, MUST on the stdio page | Not checked. The SDK sent one in the NVSentinel server on the same version | Not tested |
+| Send no reply to a cancelled request | SHOULD on that page, MUST on the stdio page | Yes. go-sdk v1.8.0 sends one; `StdioTransport` drops the response to a request cancelled while it ran | `TestACancelledRequestGetsNoReply`, `TestCancelNotificationReachesServe` (e2e) |
+| [Parse error](https://www.jsonrpc.org/specification#error_object) for a line that is not JSON, and the session goes on | JSON-RPC | Yes: -32700, and -32600 for JSON that is not a message. go-sdk v1.8.0 alone ends the session with exit 1. A bad batch or a line over 16 MiB still ends it | `TestABadLineGetsAnErrorAndTheSessionGoesOn`, `TestLineErrors` |
+| `"arguments": null` does not crash the server | Robustness | Yes: read as `{}`. go-sdk v1.8.0 with jsonschema-go v0.4.3 panics on it for tools with defaults. go-sdk v1.9.0-pre.1, a pre-release, fixes it in `applySchema`; jsonschema-go v0.4.3 is still the newest. The guard stays until a stable go-sdk has the fix | `TestNullArgumentsDoNotEndTheServer`, `TestNullArgumentsKeepTheServerUp` (e2e) |
+| Methods not in the capabilities are not found | Implied | Yes: `resources/*` and `prompts/*` answer -32601. A request before `initialize` with no `_meta` gets code 0 from go-sdk v1.8.0, which JSON-RPC does not define; pinned by the test, to report upstream | `TestUndeclaredMethodsAreNotFound` |
 | [Deterministic tool order](https://modelcontextprotocol.io/specification/2026-07-28/server/tools.md) | SHOULD | Yes | `TestItSpeaksTheLatestProtocol` |
 | Unknown tool is a protocol error, bad input is `isError` | Required | Yes | same |
 | Structured results also come as text | SHOULD | Yes | same |
@@ -82,15 +85,20 @@ Details, and what was left out on purpose: [security.md](security.md).
 
 ## Not done or not tested
 
-- **e2e against a real `health-validation serve`:** `make e2e-serve` is written but has not been run.
-  The e2e runs so far use `lab/hvfixture`, whose verdicts come from synthetic measurements.
+- **e2e against a real `health-validation serve` on a GPU health-validation knows:** `make e2e-serve` ran
+  against real serve v0.4.0-rc.1 on the build machine (an unknown architecture, `READY_LOW_COVERAGE`) and
+  the Pi (discovery failure, `DRAIN`). No GPU check was proven, and the fixture-only cases (cancel, kill
+  mid-call, second call, owner refusal) did not run against real serve.
 - **e2e through the image:** `make e2e-image` passed once against a locally built image; its SIGTERM
   test skips, because the signal reaches the docker client, not the server.
 - **[MCP Inspector](https://modelcontextprotocol.io/docs/2026-07-28/tools/inspector.md):** not run. To try it:
   `npx @modelcontextprotocol/inspector --cli nvidia-health-validation-mcp --method tools/list`
 - **[Conformance suite](https://github.com/modelcontextprotocol/conformance):** not run. Its server mode needs
   an HTTP URL, and this server has no listener by design.
-- **Cisco `mcp-scanner`**, evaluations, Trivy and OSV: not run yet.
+- **Evaluations:** [docs/evals/evals.xml](evals/evals.xml) has 10 questions in the `mcp-builder` format.
+  `make evals` checks each answer through the tools; no model has answered them yet.
+- **Cisco `mcp-scanner`** (YARA and schema): 5 tools, all safe. Trivy, OSV and govulncheck: clean but for
+  one unreachable cel-go advisory from health-validation's pin. Run by hand with `make scan`, not in CI.
 - **MCPB bundle:** not built. The image is what the Registry would list.
 - **Other MCP clients:** only the Go SDK's client has been used.
 

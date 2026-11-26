@@ -133,14 +133,20 @@ func TestRedirectsAreRefused(t *testing.T) {
 }
 
 func TestBodiesAreCapped(t *testing.T) {
-	client := serve(t, func(writer http.ResponseWriter, _ *http.Request) {
-		_, _ = writer.Write([]byte(`{"schema_version":"0.7","x":"`))
-		_, _ = writer.Write([]byte(strings.Repeat("a", MaxBodyBytes)))
-		_, _ = writer.Write([]byte(`"}`))
-	})
+	// The documented cap: 4 MiB. Literal numbers, so changing the cap fails here.
+	assert.Equal(t, 4<<20, MaxBodyBytes)
 
-	_, err := client.Evaluate(t.Context(), EvaluateRequest{})
-	assert.Equal(t, KindTooLarge, KindOf(err))
+	for size, tooLarge := range map[int]bool{4<<20 + 1: true, 4<<20 - 64: false} {
+		client := serve(t, func(writer http.ResponseWriter, _ *http.Request) {
+			prefix := `{"schema_version":"0.7","x":"`
+			_, _ = writer.Write([]byte(prefix))
+			_, _ = writer.Write([]byte(strings.Repeat("a", size-len(prefix)-2)))
+			_, _ = writer.Write([]byte(`"}`))
+		})
+
+		_, err := client.Evaluate(t.Context(), EvaluateRequest{})
+		assert.Equal(t, tooLarge, KindOf(err) == KindTooLarge, "a %d-byte body", size)
+	}
 }
 
 func TestErrorsHideTheirDetail(t *testing.T) {

@@ -57,10 +57,10 @@ below), and the README says to set it.
 | `hv_get_verdict` is not registered unless `HV_MCP_ALLOW_EVALUATE` is exactly `true`; `1`, `TRUE`, `True`, `yes` and padded values leave it off and are logged | `TestEvaluateIsOffByDefault`, `TestEvaluateNeedsExactlyTrue` |
 | One evaluation at a time: a second is refused, not queued, and serve sees one request | `TestSingleFlightRefusesNotQueues` |
 | At most one evaluation per `HV_MCP_EVALUATE_INTERVAL_SECONDS` (default 10, 5 to 600) | `TestEvaluateIsRateLimited`, `TestEvaluateIntervalBounds` |
-| All tool calls share a limit of 10 per second, burst 20, as the spec requires. It counts calls that pass schema validation; malformed calls are refused earlier and never reach serve | `TestToolCallsAreRateLimited` |
+| All tool calls share a limit of 10 per second, burst 20, as the spec requires. It counts calls that pass schema validation; malformed calls are refused earlier and never reach serve | `TestToolCallsAreRateLimited`, which checks the numbers 10 and 20 themselves |
 | Nothing is retried, an HTTP 429 included | `TestHTTPStatusMapsToKinds` |
 | `hv_service_status` reads `/healthz` only and starts no evaluation. It reads whether an evaluation runs from a flag, never from the evaluation lock, so it cannot make a concurrent `hv_get_verdict` look busy | `TestServiceStatus`, `TestStatusLeavesTheEvaluationLockAlone` |
-| SIGTERM, closing stdin, `notifications/cancelled`, or the server's shutdown cancels the in-flight request, and serve sees it cancelled | `TestSigtermCancelsEvaluate`, `TestStdinCloseCancelsEvaluate`, `TestShutdownCancelsEvaluate`, `TestCancelNotificationReachesServe` (e2e), `TestSigtermCancelsEvaluate` (e2e) |
+| SIGTERM, closing stdin, `notifications/cancelled`, or the server's shutdown cancels the in-flight request, and serve sees it cancelled. A request cancelled by `notifications/cancelled` gets no reply | `TestACancelledRequestGetsNoReply`, `TestSigtermCancelsEvaluate`, `TestStdinCloseCancelsEvaluate`, `TestShutdownCancelsEvaluate`, `TestCancelNotificationReachesServe` (e2e), `TestSigtermCancelsEvaluate` (e2e) |
 
 The real limits on load are serve's: its serialized collection, per-source watchdogs, 32-request admission
 and `collection_source_busy`. This server adds its own limits so a model cannot reach those.
@@ -82,9 +82,11 @@ and `collection_source_busy`. This server adds its own limits so a model cannot 
 |---|---|
 | Control and format characters (ANSI escapes, bidi overrides, zero-width) are stripped | `TestCleanStripsControlAndFormatCharacters`, `TestOtherTextIsCleanedAndFenced`, `TestServiceStatus` |
 | Node text is wrapped in a marker with a random value per call, and cannot close it | `TestFenceCannotBeClosedFromInside`, `TestOtherTextIsCleanedAndFenced` |
-| Messages are capped at 300 bytes, stuck calls at 8, entities at 16, each cut flagged | `TestOtherTextIsCleanedAndFenced`, `TestServiceStatus`, `TestEntitiesKeepOnlyIdentifiers` |
-| `hv_describe_check` is capped at 16 KiB, and remediation lists at 30 checks, with the cut flagged | `TestDescribeCheck`, `TestExplainRemediation` |
-| `gpu_compute_apps` messages, which hold tenant command lines, become a count and the PIDs. A PID is read only from the `pid=N` at the start of a line, never from a `pid=` inside the quoted command line, and no more PIDs are shown than the reported count | `TestTenantTextIsWithheld`, `TestPIDsComeFromPidFieldsOnly`, `TestSentencesHoldNoTenantText` |
+| Messages are capped at 300 bytes, stuck calls at 8, entities at 16, each cut flagged. The tests check these numbers, not only the constants | `TestOtherTextIsCleanedAndFenced` (a 1,000-byte message), `TestDocumentedCaps`, `TestServiceStatus`, `TestEntitiesKeepOnlyIdentifiers` |
+| `hv_describe_check` is capped at 16 KiB, and remediation lists at 30 checks, with the cut flagged | `TestDescribeCheck`, `TestExplainRemediation`, each checking the number |
+| `gpu_compute_apps` messages, which hold tenant command lines, become a count and the PIDs. A PID is read only from the `pid=N` at the start of a line, never from a `pid=` inside the quoted command line, and no more PIDs are shown than the reported count | `TestTenantTextIsWithheld`, `TestPIDsComeFromPidFieldsOnly`, `TestPIDsNeverExceedTheCount`, `TestSentencesHoldNoTenantText` |
+| An `UNKNOWN` `gpu_compute_apps`, whose collection failed, says the process list could not be read. It never says processes hold the GPU | `TestUnreadComputeAppsHoldNoProcess` |
+| An `UNKNOWN` `gpu_xid_*`, as when the journal cannot be read, says no Xid was confirmed, never that one fired. All of them fold into one finding with `folded_checks`, so they take one of the 50 finding slots | `TestUnreadJournalIsNotAnXid` |
 | `gpu_xid_*` messages and observed values, which hold journal text and tenant process names, become the pinned catalog's own text | `TestTenantTextIsWithheld`, `TestSentencesHoldNoTenantText` |
 | Entity names are kept only if they look like a GPU UUID, a PCI address, an RDMA port (`mlx`, `ib`, `bnxt_re` or `rxe` device names, then `:port`) or a GPU index; others are counted. Kept names are pattern-checked, not fenced | `TestEntitiesKeepOnlyIdentifiers`, `TestOtherTextIsCleanedAndFenced`, `TestUnknownIDsAreFenced` |
 | Check IDs pass as is only when the pinned catalog or serve itself names them, or they have the `gpu_xid_<code>` shape. Any other ID that fits `[a-z0-9_]{1,64}` is fenced, and anything else is replaced. Observed-value keys are fenced unless a catalog check reads a signal of that name | `TestUnknownIDsAreFenced` |
@@ -101,7 +103,7 @@ can do: a fooled model still has five read-only tools.
 | A verdict that is not JSON, lacks a severity, has an unknown or unspecified enum name or number anywhere (check results, skipped checks, the domain map and recommended actions included), or a schema other than `0.7`, is refused; the advice is `NO_VERDICT`, never a pass | `TestDecodeVerdict`, `TestABadVerdictIsNeverAPass` |
 | The verdict must also pass health-validation's own wire checks (`verdictproto.FromProto`: every check names its category, severity and the other required fields), every node or check action names its state, and the overall severity is not lower than any check's | `TestDecodeVerdict`, `TestABadVerdictIsNeverAPass` |
 | Object keys the 0.7 schema does not define are dropped at any depth before the strict decode, so a later serve may add fields. Duplicate keys and data after the verdict are refused | `TestDecodeVerdict`, `TestABadVerdictIsNeverAPass` |
-| A PASS where no GPU, NVLink or Xid check ran is `READY_LOW_COVERAGE`, with the reason | `TestUnknownArchitectureIsNotReadAsHealthy`, `TestSchedulingAdvice` |
+| A PASS where no GPU or NVLink check ran is `READY_LOW_COVERAGE`, with the reason, however many Xid checks ran: they only read the journal. This covers an H200 at `CONTINUOUS` and a serve that supplied no GPU measurements | `TestUnknownArchitectureIsNotReadAsHealthy`, `TestXidChecksAloneAreLowCoverage`, `TestSchedulingAdvice` |
 | An UNKNOWN whose first step is `retry_collection` (a busy source, a collection timeout) is `RETRY_COLLECTION`; CRITICAL and any other UNKNOWN (`check_collection` included) are `DRAIN`; WARNING is `MONITOR`; INFO is `READY` | `TestSchedulingAdvice` |
 | A serve on another catalog version is flagged `version_skew` | `TestVersionSkewIsFlagged` |
 | Serve down, timing out or failing gives `NO_VERDICT` | `TestServiceNotRunning`, `TestHTTPStatusMapsToKinds`, `TestShutdownCancelsEvaluate` |
@@ -117,12 +119,26 @@ and `no_verdict` (`TestAuditLineHasArgumentsOutcomeAndDuration`, `TestSingleFlig
 `TestHTTPStatusMapsToKinds`, `TestShutdownCancelsEvaluate`, `TestItSpeaksTheLatestProtocol`).
 
 With `-d`, each call to serve also writes one debug line: method, path, HTTP status, duration and error
-kind, never a body or serve's text (`TestDebugLogsEachCallToServe`).
+kind, never a body or serve's text (`TestDebugLogsEachCallToServe`; `TestDebugLinesHoldNoBody` runs against
+a serve that puts a marker in every body and checks that no stderr line holds it and that debug lines have
+only those keys).
 
 ### Protocol surface
 
 The server advertises only `tools`: no `logging`, no `listChanged` (`TestCapabilitiesAreOnlyTools`,
-`TestItSpeaksTheLatestProtocol`). Every tool is marked read-only, not destructive and closed-world
+`TestItSpeaksTheLatestProtocol`). `resources/*` and `prompts/*` answer -32601, method not found, as the
+capabilities say; the SDK alone would answer them with empty lists (`TestUndeclaredMethodsAreNotFound`).
+
+Hostile input on the wire does not stop the server:
+
+- `"arguments": null` is read as `{}`. go-sdk v1.8.0 and jsonschema-go v0.4.3 panicked on it for the three
+  tools with defaults, which ended the process and dropped a running evaluation without its audit line
+  (`TestNullArgumentsDoNotEndTheServer`, `TestNullArgumentsKeepTheServerUp` (e2e)).
+- A panic anywhere in `tools/call`, the SDK's own code included, returns `error executing the tool`
+  (`TestAPanicInAToolCallIsAToolError`).
+- A line that is not JSON gets -32700, and JSON that is not a JSON-RPC message gets -32600; the session
+  goes on (`TestABadLineGetsAnErrorAndTheSessionGoesOn`, `TestLineErrors`). The SDK alone ended the session.
+  A bad JSON-RPC batch and a line over 16 MiB still end it, as the SDK does. Every tool is marked read-only, not destructive and closed-world
 (`TestEveryToolDeclaresAllFourHints`).
 
 ### The image
@@ -149,7 +165,8 @@ the Registry also runs the image in the host's network namespace
 (`TestServerJSONRunsTheImageLikeTheReadme` checks them against the README's line). Use
 `--network=container:<serve container>` when serve runs in a container without host networking. Add
 `-e HV_MCP_ALLOW_EVALUATE=true` only for a client that should evaluate the node. The image is not published
-yet; signing, an SBOM, provenance and Trivy and OSV scans come with the release pipeline.
+yet; signing, an SBOM and provenance come with the release pipeline. Trivy (0 HIGH or CRITICAL), OSV
+(0) and govulncheck (0 reachable) were run by hand with `make scan`; see the README's Scans section.
 
 ## Left out on purpose
 
@@ -171,8 +188,8 @@ yet; signing, an SBOM, provenance and Trivy and OSV scans come with the release 
   in [test-results/fixture](test-results/fixture). The real `health-validation serve` v0.4.0-rc.1 runs: [test-results/build-machine](test-results/build-machine) and [test-results/pi5](test-results/pi5);
   they prove the wire, the decode and the low-coverage and discovery-failure answers, not any GPU check.
   `make e2e-image` passed once on the Pi against a locally built image, without the SIGTERM test.
-- A crash or panic in a tool returns only `error executing tool <name>`, with detail in the log. This is
-  in the code but no test triggers it.
+- A panic in a tool returns only an error, with detail in the log. The guard in `register` names the tool
+  and no test triggers it; the guard around all of `tools/call` is tested.
 - The 64 KiB cap on `hv_get_verdict` output is in the code but no test reaches it.
 - The owner check is Linux only, and off unless `HV_MCP_SERVE_UID` is set.
 - Tool annotations are hints: only a client that honours them prompts a human.

@@ -13,7 +13,7 @@
         "owner_check": false,
         "reachable": false,
         "schema_version": "0.7",
-        "serve_address": "127.0.0.1:33173",
+        "serve_address": "127.0.0.1:45183",
         "stuck_calls": [],
         "stuck_calls_truncated": false
       },
@@ -44,7 +44,7 @@
       "is_error": false
     }
   ],
-  "recorded": "2026-11-26T20:25:58Z",
+  "recorded": "2026-11-26T22:10:03Z",
   "scenario": "serve-stopped",
   "source": "health-validation serve on pi5: real measurements from this host"
 }

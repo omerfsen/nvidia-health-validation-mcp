@@ -79,8 +79,19 @@ func TestEntitiesKeepOnlyIdentifiers(t *testing.T) {
 	}
 
 	kept, _, cut = Entities(many)
-	assert.Len(t, kept, MaxEntities)
+	assert.Len(t, kept, 16, "the documented cap is 16 entities")
 	assert.True(t, cut)
+}
+
+// The documented caps, as literal numbers, so changing one fails a test.
+func TestDocumentedCaps(t *testing.T) {
+	assert.Equal(t, 300, MaxMessageBytes)
+	assert.Equal(t, 16, MaxEntities)
+	assert.Equal(t, 8, MaxStuckCalls)
+
+	cut, truncated := Clean(strings.Repeat("x", 301), MaxMessageBytes)
+	assert.True(t, truncated)
+	assert.Equal(t, strings.Repeat("x", 300)+"…", cut)
 }
 
 func TestPIDsComeFromPidFieldsOnly(t *testing.T) {
@@ -99,4 +110,8 @@ func TestSentencesHoldNoTenantText(t *testing.T) {
 		"because the tenant controls them.", ComputeAppsSentence(2, []int64{1, 2}))
 	assert.Contains(t, ComputeAppsSentence(-1, nil), "could not be read")
 	assert.Contains(t, XidSentence("gpu_xid_79", "GPU fell off the bus."), "Catalog guidance: GPU fell off the bus.")
+	assert.Equal(t, "Check gpu_xid_79 and 3 other gpu_xid_* checks could not read the journal; no Xid was "+
+		"confirmed. Collect again before treating this as an Xid fault.", XidUnreadSentence("gpu_xid_79", 3))
+	assert.NotContains(t, XidUnreadSentence("gpu_xid_79", 0), "other")
+	assert.NotContains(t, ComputeAppsUnreadSentence(), "still hold")
 }

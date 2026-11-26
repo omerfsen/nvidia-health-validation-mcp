@@ -708,6 +708,48 @@ func TestCancelNotificationReachesServe(t *testing.T) {
 
 	cancelled := served.waitFor(t, "evaluate_cancelled", 10*time.Second)
 	assert.Less(t, cancelled["seconds"], 15.0, "serve saw the cancel, not the hold's end")
+
+	// The stdio spec: no reply to a cancelled request. The next message must answer id 2.
+	raw.send(t, 2, "tools/list", map[string]any{})
+	assert.Contains(t, resultOf(t, raw.reply(t, 2)), "tools", "the cancelled request got no reply")
+
+	require.NoError(t, raw.stdin.Close())
+
+	for late := range raw.replies {
+		assert.NotEqual(t, 1.0, late["id"], "no reply for the cancelled request, even late")
+	}
+}
+
+// "arguments": null used to panic inside the SDK and end the process, an evaluation in
+// flight included.
+func TestNullArgumentsKeepTheServerUp(t *testing.T) {
+	needFixture(t)
+
+	served := startFixture(t, "healthy-gb200", 2*time.Minute)
+	command := serverCommand(t, servePort(served), evaluateOn())
+
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+
+	raw := startRaw(t, command)
+
+	raw.send(t, 1, "tools/call", map[string]any{"name": "hv_get_verdict", "arguments": map[string]any{}})
+	served.waitFor(t, "evaluate_received", 30*time.Second)
+
+	for id, tool := range []string{"hv_list_checks", "hv_explain_remediation", "hv_describe_check", "hv_service_status", "hv_get_verdict"} {
+		raw.send(t, id+2, "tools/call", map[string]any{"name": tool, "arguments": nil})
+		assert.NotNil(t, resultOf(t, raw.reply(t, id+2)), tool)
+	}
+
+	require.NoError(t, raw.stdin.Close())
+
+	for range raw.replies {
+	}
+
+	require.NoError(t, <-raw.exited, "the server exits cleanly, not on a panic")
+	assert.NotContains(t, stderr.String(), "panic")
+	assert.Equal(t, 2, strings.Count(stderr.String(), `"msg":"evaluate"`),
+		"both evaluate attempts are audited: the cancelled one and the refused one")
 }
 
 // SIGTERM mid-evaluation: the request to serve is cancelled, which the fixture sees, and the

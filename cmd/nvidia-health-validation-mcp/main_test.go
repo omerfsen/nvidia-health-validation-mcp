@@ -110,6 +110,56 @@ func TestDebugLogsEachCallToServe(t *testing.T) {
 	}
 }
 
+// The debug line never carries a body: serve here answers with a marker in every body.
+func TestDebugLinesHoldNoBody(t *testing.T) {
+	const marker = "BODYMARKER-must-not-be-logged"
+
+	fake := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = io.ReadAll(request.Body)
+
+		if request.URL.Path == "/healthz" {
+			_, _ = writer.Write([]byte(`{"status":"ok","note":"` + marker + `"}`))
+			return
+		}
+
+		_, _ = writer.Write([]byte(`{"schema_version":"0.7","overall_severity":"PASS","note":"` + marker + `"}`))
+	}))
+	t.Cleanup(fake.Close)
+
+	_, port, err := net.SplitHostPort(fake.Listener.Addr().String())
+	require.NoError(t, err)
+
+	raw := startRawWith(t, options{debug: true}, map[string]string{"HV_MCP_SERVE_PORT": port, "HV_MCP_ALLOW_EVALUATE": "true"})
+	raw.send(t, 1, "tools/call", map[string]any{"name": "hv_service_status", "arguments": map[string]any{}})
+	raw.reply(t, 1)
+	raw.send(t, 2, "tools/call", map[string]any{"name": "hv_get_verdict", "arguments": map[string]any{}})
+	raw.reply(t, 2)
+	require.NoError(t, raw.stdin.Close())
+	require.NoError(t, <-raw.exited)
+
+	documented := []string{"error_kind", "level", "method", "msg", "path", "seconds", "status", "time"}
+
+	var calls int
+
+	for line := range strings.SplitSeq(raw.stderr.String(), "\n") {
+		var entry map[string]any
+		if json.Unmarshal([]byte(line), &entry) != nil || entry["msg"] != "call to serve" {
+			continue
+		}
+
+		calls++
+
+		assert.NotContains(t, line, marker)
+
+		for key := range entry {
+			assert.Contains(t, documented, key, "an undocumented key on a debug line")
+		}
+	}
+
+	assert.Equal(t, 2, calls, raw.stderr.String())
+	assert.NotContains(t, raw.stderr.String(), marker, "no line on stderr holds serve's body")
+}
+
 func TestABadCommandLineIsRefused(t *testing.T) {
 	for _, args := range [][]string{{"--nope"}, {"serve"}} {
 		var stderr bytes.Buffer
@@ -402,8 +452,13 @@ func blockingServe(t *testing.T) (port string, entered, cancelled chan struct{})
 	entered, cancelled = make(chan struct{}), make(chan struct{})
 	release := make(chan struct{})
 
-	fake := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+	fake := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		_, _ = io.ReadAll(request.Body)
+
+		if request.URL.Path != "/verdict" {
+			_, _ = writer.Write([]byte(`{"status":"ok"}`))
+			return
+		}
 
 		close(entered)
 
@@ -472,4 +527,195 @@ func TestSigtermCancelsEvaluate(t *testing.T) {
 		// run has registered for SIGTERM, so the signal reaches it, not the test binary's default.
 		require.NoError(t, syscall.Kill(os.Getpid(), syscall.SIGTERM))
 	})
+}
+
+// writeLine sends one raw line, as a client would.
+func (r *rawServer) writeLine(t *testing.T, line string) {
+	t.Helper()
+
+	_, err := r.stdin.Write([]byte(line + "\n"))
+	require.NoError(t, err)
+}
+
+// next returns the next message on stdout, whatever its id.
+func (r *rawServer) next(t *testing.T) map[string]any {
+	t.Helper()
+
+	select {
+	case reply, open := <-r.replies:
+		require.True(t, open, "the server closed stdout")
+		require.Nil(t, reply["notJSON"], "stdout must hold only MCP messages")
+
+		return reply
+	case <-time.After(30 * time.Second):
+		require.FailNow(t, "no reply")
+		return nil
+	}
+}
+
+func errorCode(t *testing.T, reply map[string]any) float64 {
+	t.Helper()
+
+	failure, ok := reply["error"].(map[string]any)
+	require.True(t, ok, "reply: %v", reply)
+
+	code, ok := failure["code"].(float64)
+	require.True(t, ok, "reply: %v", reply)
+
+	return code
+}
+
+// go-sdk v1.8.0 turns "arguments": null into a nil map and jsonschema-go v0.4.3 then
+// panics applying a default, which used to end the process.
+func TestNullArgumentsDoNotEndTheServer(t *testing.T) {
+	port, entered, cancelled := blockingServe(t)
+	raw := startRaw(t, map[string]string{"HV_MCP_SERVE_PORT": port, "HV_MCP_ALLOW_EVALUATE": "true"})
+
+	raw.send(t, 1, "tools/call", map[string]any{"name": "hv_get_verdict", "arguments": map[string]any{}})
+
+	select {
+	case <-entered:
+	case <-time.After(30 * time.Second):
+		require.FailNow(t, "the evaluation never reached serve")
+	}
+
+	for id, tool := range []string{"hv_list_checks", "hv_explain_remediation", "hv_describe_check", "hv_service_status"} {
+		raw.send(t, id+2, "tools/call", map[string]any{"name": tool, "arguments": nil})
+		assert.NotNil(t, resultOf(t, raw.reply(t, id+2)), tool)
+	}
+
+	// The running evaluation holds the lock, so this one is refused, but it is answered.
+	raw.send(t, 9, "tools/call", map[string]any{"name": "hv_get_verdict", "arguments": nil})
+	assert.Equal(t, true, resultOf(t, raw.reply(t, 9))["isError"])
+
+	require.NoError(t, raw.stdin.Close())
+
+	select {
+	case <-cancelled:
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "the running evaluation must be cancelled")
+	}
+
+	require.NoError(t, <-raw.exited)
+	assert.Contains(t, raw.stderr.String(), `"outcome":"cancelled"`, "the first evaluation is audited")
+	assert.Contains(t, raw.stderr.String(), `"outcome":"refused_busy"`, "so is the refused one")
+	assert.NotContains(t, raw.stderr.String(), "panic")
+}
+
+// A line that is not a JSON-RPC message gets an error and the session goes on. The SDK
+// alone would end it.
+func TestABadLineGetsAnErrorAndTheSessionGoesOn(t *testing.T) {
+	raw := startRaw(t, map[string]string{"HV_MCP_SERVE_PORT": closedPort(t)})
+
+	for line, code := range map[string]float64{"not json": -32700, "123": -32600, `{"foo":1}`: -32600} {
+		raw.writeLine(t, line)
+		reply := raw.next(t)
+		assert.Nil(t, reply["id"], line)
+		assert.InDelta(t, code, errorCode(t, reply), 0, line)
+	}
+
+	raw.send(t, 1, "tools/list", map[string]any{})
+	assert.Len(t, resultOf(t, raw.reply(t, 1))["tools"], 4)
+
+	require.NoError(t, raw.stdin.Close())
+	require.NoError(t, <-raw.exited)
+}
+
+// The stdio spec says a cancelled request MUST NOT get a reply. go-sdk v1.8.0 sends one;
+// the server's transport drops it.
+func TestACancelledRequestGetsNoReply(t *testing.T) {
+	port, entered, cancelled := blockingServe(t)
+	raw := startRaw(t, map[string]string{"HV_MCP_SERVE_PORT": port, "HV_MCP_ALLOW_EVALUATE": "true"})
+
+	raw.send(t, 1, "tools/call", map[string]any{"name": "hv_get_verdict", "arguments": map[string]any{}})
+
+	select {
+	case <-entered:
+	case <-time.After(30 * time.Second):
+		require.FailNow(t, "the evaluation never reached serve")
+	}
+
+	raw.writeLine(t, `{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1,"reason":"test"}}`)
+
+	select {
+	case <-cancelled:
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "the running evaluation must be cancelled")
+	}
+
+	// The audit line is written after the handler returns, so wait for it.
+	require.Eventually(t, func() bool { return strings.Contains(raw.stderr.String(), `"outcome":"cancelled"`) },
+		10*time.Second, 10*time.Millisecond)
+
+	raw.send(t, 2, "tools/list", map[string]any{})
+	reply := raw.next(t)
+	assert.InDelta(t, 2, reply["id"], 0, "the next message is the tools/list reply, not the cancelled verdict")
+
+	require.NoError(t, raw.stdin.Close())
+	require.NoError(t, <-raw.exited)
+
+	for late := range raw.replies {
+		assert.NotEqual(t, 1.0, late["id"], "no reply for the cancelled request, even late")
+	}
+}
+
+// sendPlain sends a request without the 2026-07-28 _meta, as a client of an older revision does.
+func (r *rawServer) sendPlain(t *testing.T, id int, method string, params map[string]any) {
+	t.Helper()
+
+	message := map[string]any{"jsonrpc": "2.0", "method": method, "params": params}
+	if id != 0 {
+		message["id"] = id
+	}
+
+	line, err := json.Marshal(message)
+	require.NoError(t, err)
+	r.writeLine(t, string(line))
+}
+
+// Older revisions are negotiated through initialize. 2026-07-28 has no initialize, so
+// asking for it there gets the newest revision that does.
+func TestOlderRevisionsThroughInitialize(t *testing.T) {
+	for requested, negotiated := range map[string]string{
+		"2025-11-25": "2025-11-25", "2025-06-18": "2025-06-18", "2025-03-26": "2025-03-26",
+		"2024-11-05": "2024-11-05", latestProtocol: "2025-11-25", "2023-01-01": "2025-11-25",
+	} {
+		raw := startRaw(t, map[string]string{"HV_MCP_SERVE_PORT": closedPort(t)})
+
+		raw.sendPlain(t, 1, "initialize", map[string]any{
+			"protocolVersion": requested, "capabilities": map[string]any{},
+			"clientInfo": map[string]any{"name": "test", "version": "1"},
+		})
+		initialized := resultOf(t, raw.reply(t, 1))
+		assert.Equal(t, negotiated, initialized["protocolVersion"], requested)
+		assert.Equal(t, map[string]any{"tools": map[string]any{}}, initialized["capabilities"], requested)
+
+		raw.sendPlain(t, 0, "notifications/initialized", map[string]any{})
+		raw.sendPlain(t, 2, "tools/list", map[string]any{})
+		assert.Len(t, resultOf(t, raw.reply(t, 2))["tools"], 4, requested)
+
+		require.NoError(t, raw.stdin.Close())
+		require.NoError(t, <-raw.exited)
+	}
+}
+
+// Methods the capabilities do not list are not found. Before initialize, go-sdk v1.8.0
+// answers with code 0, which JSON-RPC does not define; this pins that SDK behaviour.
+func TestUndeclaredMethodsAreNotFound(t *testing.T) {
+	raw := startRaw(t, map[string]string{"HV_MCP_SERVE_PORT": closedPort(t)})
+
+	for id, method := range []string{"resources/list", "resources/templates/list", "prompts/list"} {
+		raw.send(t, id+1, method, map[string]any{})
+		assert.InDelta(t, -32601, errorCode(t, raw.reply(t, id+1)), 0, method)
+	}
+
+	require.NoError(t, raw.stdin.Close())
+	require.NoError(t, <-raw.exited)
+
+	fresh := startRaw(t, map[string]string{"HV_MCP_SERVE_PORT": closedPort(t)})
+	fresh.sendPlain(t, 1, "tools/list", map[string]any{})
+	assert.InDelta(t, 0, errorCode(t, fresh.reply(t, 1)), 0, "no _meta and no initialize")
+
+	require.NoError(t, fresh.stdin.Close())
+	require.NoError(t, <-fresh.exited)
 }

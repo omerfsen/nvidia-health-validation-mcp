@@ -299,3 +299,74 @@ A review found 16 issues; two pairs were the same issue. What changed, and why:
   (ALL, CONTINUOUS, PROLOG), evaluation off by default, serve stopped, and the raw wire test. The
   fixture-only tests skip by design. Results: `docs/test-results/build-machine`, `docs/test-results/pi5`;
   checked for host names, user names and addresses before saving.
+
+## 2026-11-26: evaluations
+
+- Wrote 10 questions in `docs/evals/evals.xml`, in the format of Anthropic's `mcp-builder` skill: four on
+  the catalog alone and six on `lab/hvfixture` scenarios. A comment before each names its scenario.
+- `tests/evals` (`-tags evals`) works out each answer with the same tool calls a model would make, over
+  stdio, and compares it with the file. `make evals` runs it.
+- Checked that the test catches a wrong answer: changing two answers made those two questions fail.
+- Not done: a model answering the questions. The answers come from synthetic fixture verdicts and the
+  pinned v0.4.0-rc.1 catalog.
+
+## 2026-11-26: second review
+
+A second, independent review sent 12 findings. Each was checked against the code first. All 12 were
+real, and all were fixed.
+
+- **Xid checks counted as coverage (ATK-1).** An H200 at `CONTINUOUS` ran 59 Xid checks and no GPU or
+  NVLink check, and got `READY`. Xid checks only read the journal. Coverage now counts GPU and NVLink checks
+  only, and the reason says how many Xid checks ran and how many checks the cadence skipped. The
+  instructions, README, AGENTS.md and the skill say the same. New fixtures: H200 at `CONTINUOUS`, and a
+  GB200 with no GPU measurements.
+- **An unread journal read as fired Xids (ATK-2).** Every `gpu_xid_*` check was UNKNOWN and each said
+  "Check gpu_xid_N fired." An UNKNOWN Xid check now says the journal could not be read and no Xid was
+  confirmed. They fold into one finding with a new `folded_checks` count, so they no longer fill the
+  50-finding cap and push out other findings.
+- **An unread compute process list read as live processes (ATK-3).** An UNKNOWN `gpu_compute_apps` now
+  says the list could not be read and no process was confirmed.
+- **`"arguments": null` ended the process (P1).** go-sdk v1.8.0 turns it into a nil map, and
+  jsonschema-go v0.4.3 panics writing a default into it. The panic was in the SDK, outside the guard in
+  `register`. A receiving middleware now reads null as `{}` and recovers any panic in `tools/call`.
+  go-sdk v1.9.0-pre.1 fixes the cause; jsonschema-go has no newer release. Checked by putting the SDK
+  transport back without the middleware: the new test crashed the test binary.
+- **A line that is not JSON ended the session (P2).** `StdioTransport` wraps the SDK's stdio transport.
+  It answers a line that is not JSON with -32700 and JSON that is not a JSON-RPC message with -32600, then
+  goes on. A bad batch and a line over 16 MiB are still left to the SDK, which ends the session.
+- **A cancelled request got a reply (P3).** The stdio spec says it MUST NOT. `StdioTransport` records
+  `notifications/cancelled` for a request still in flight and drops its response. Checked on the wire
+  against `lab/hvfixture` with a 4 s hold: the cancelled call got no reply, and the next call did.
+- **Older revisions were not tested (P4).** A test now runs `initialize` for each revision the SDK offers
+  and checks the echoed version, capabilities `{tools:{}}` and four tools.
+- **`resources/*` and `prompts/*` answered with empty lists (P5).** The middleware now answers -32601. Code
+  0 before `initialize` is SDK behaviour; a test pins it, and it is to be reported to go-sdk.
+- **Docs said `make e2e-serve` never ran (T1).** Fixed in `docs/mcp-standards.md`.
+- **Caps whose numbers no test checked (T2, T3, T4).** New tests: one process with two `pid=` lines shows
+  one PID; a 1,000-byte message is cut to 300 bytes and flagged; the tests now check the numbers 10, 20,
+  300, 8, 16, 4 MiB, 16 KiB and 30 themselves. Each was checked by changing the constant: the test failed.
+- **The debug test never saw a body (T5).** `TestDebugLinesHoldNoBody` runs against a serve that puts a
+  marker in every body. Adding a `body` key to the debug line makes it fail.
+
+The real-serve results in `docs/test-results/build-machine` and `docs/test-results/pi5` keep the old
+coverage wording; they were not run again.
+
+| Command | Result |
+|---|---|
+| `go vet ./...` | clean |
+| `make lint` | gofmt clean, golangci-lint 0 issues |
+| `go test -count=1 ./...` | all 5 packages pass |
+| `make e2e` | all e2e tests pass, `TestRealServe` skipped; `docs/test-results/fixture` rewritten |
+| `make evals` | all 10 answers match |
+| `make test-race-amd64` | all 5 packages pass, no data race |
+
+## 2026-11-26: scans and real serve again
+
+- Trivy found CVE-2026-78661 (HIGH) in `golang.org/x/net` v0.61.0. Raised it to v0.62.0 in both modules,
+  which also cleared GO-2026-6866 and GO-2026-6860 from govulncheck. Trivy and OSV are then clean.
+- govulncheck still lists GO-2026-6094 in cel-go v0.28.0, health-validation's pin. Not reachable; kept so the
+  catalog tools use the same CEL as the serve they describe.
+- Trivy runs with `--disable-telemetry`: it sends anonymous usage data by default.
+- Cisco `mcp-scanner` with YARA and schema: 5 tools, all safe.
+- Re-ran `make e2e-serve` on the build machine (`READY_LOW_COVERAGE`) and the Pi (`DRAIN`) after the second
+  review changed the coverage wording; results rewritten.

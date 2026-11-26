@@ -579,6 +579,10 @@
                     "array"
                   ]
                 },
+                "folded_checks": {
+                  "description": "how many other gpu_xid_* checks could not read the journal either; they are folded into this finding",
+                  "type": "integer"
+                },
                 "messages": {
                   "description": "fenced node text, or a sentence the server built",
                   "items": {

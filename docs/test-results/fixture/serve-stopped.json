@@ -13,7 +13,7 @@
         "owner_check": false,
         "reachable": false,
         "schema_version": "0.7",
-        "serve_address": "127.0.0.1:44771",
+        "serve_address": "127.0.0.1:38905",
         "stuck_calls": [],
         "stuck_calls_truncated": false
       },
@@ -44,7 +44,7 @@
       "is_error": false
     }
   ],
-  "recorded": "2026-11-26T20:24:57Z",
+  "recorded": "2026-11-26T22:09:18Z",
   "scenario": "serve-stopped",
   "source": "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"
 }

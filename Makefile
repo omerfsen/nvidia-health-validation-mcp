@@ -9,7 +9,7 @@ GOLANGCI_LINT := $(HOME)/go/bin/golangci-lint
 # Raspberry Pi 5 kernel has 47 bits), test-race-amd64 runs it in an emulated container.
 RACE_IMAGE := golang:1.27.4-bookworm@sha256:ce59b41415e2524ae99926fe1f37ce48ba8c194dcbd2a56a65436cdcefa2bd34
 
-.PHONY: help build vet lint test test-race-amd64 docs e2e e2e-serve e2e-image image scan lab-test lab-fixture
+.PHONY: help build vet lint test test-race-amd64 docs e2e e2e-serve e2e-image evals image scan lab-test lab-fixture
 
 help:
 	@echo "  make build            build $(BINARY), static, CGO_ENABLED=0"
@@ -22,10 +22,11 @@ help:
 	@echo "  make e2e-serve        the same against a real serve: HV_SERVE_PORT=<port> HV_HOST_LABEL=<label>"
 	@echo "                        (optional HV_SERVE_UID); writes docs/test-results/<label>"
 	@echo "  make e2e-image        the fixture e2e with the server in its image (IMAGE=<ref>); writes nothing"
+	@echo "  make evals            check every answer in docs/evals/evals.xml with the tools, against lab/hvfixture"
 	@echo "  make lab-test         check that each lab/hvfixture scenario yields the verdict it claims"
 	@echo "  make lab-fixture      run lab/hvfixture by hand: SCENARIO=<name> PORT=<port> [HOLD=30s]"
 	@echo "  make image            build the image as $(IMAGE); the version comes from version.txt"
-	@echo "  make scan             (not written yet) Trivy, OSV and mcp-scanner"
+	@echo "  make scan             govulncheck, OSV, Trivy and mcp-scanner (tools must be installed)"
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(BINARY) ./cmd/nvidia-health-validation-mcp
@@ -53,9 +54,12 @@ docs:
 image:
 	docker build -t $(IMAGE) .
 
-scan:
-	@echo "make $@: not written yet; see docs/build-log.md" >&2
-	@exit 1
+scan: build image
+	govulncheck ./...
+	cd lab/hvfixture && govulncheck ./...
+	osv-scanner scan source -r .
+	trivy image --disable-telemetry --severity HIGH,CRITICAL --exit-code 1 $(IMAGE)
+	mcp-scanner --analyzers yara,schema stdio --stdio-command $(CURDIR)/$(BINARY) --stdio-env HV_MCP_ALLOW_EVALUATE=true
 
 # lab/hvfixture is its own module, so its server dependencies stay out of this go.mod.
 HOLD ?= 0s
@@ -83,3 +87,7 @@ e2e-serve:
 
 e2e-image:
 	E2E_IMAGE=$(IMAGE) $(E2E)
+
+evals: lab-test
+	go vet -tags evals ./tests/...
+	go test -tags evals -count=1 -v -timeout 10m ./tests/evals/

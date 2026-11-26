@@ -12,7 +12,7 @@
         "owner_check": false,
         "reachable": true,
         "schema_version": "0.7",
-        "serve_address": "127.0.0.1:34369",
+        "serve_address": "127.0.0.1:37461",
         "stuck_calls": [],
         "stuck_calls_truncated": false
       },
@@ -46,7 +46,7 @@
           ],
           "scheduling_advice": "DRAIN"
         },
-        "fence_marker": "untrusted-hv-text-d2206f4c23fe3acf",
+        "fence_marker": "untrusted-hv-text-2c5597e4d90e0e6d",
         "findings": [
           {
             "category": "xid",
@@ -305,7 +305,7 @@
             "reason": "SENSOR_MISSING"
           }
         ],
-        "timestamp": "2026-11-26T20:24:57Z",
+        "timestamp": "2026-11-26T22:09:18Z",
         "truncated": false,
         "version_skew": false
       },
@@ -316,8 +316,7 @@
       "is_error": false
     }
   ],
-  "recorded": "2026-11-26T20:24:57Z",
+  "recorded": "2026-11-26T22:09:18Z",
   "scenario": "xid79",
-  "scenario_claim": "CRITICAL gpu_xid_79: one GPU fell off the bus, with tenant text in the journal event",
   "source": "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"
 }

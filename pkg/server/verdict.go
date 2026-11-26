@@ -70,10 +70,10 @@ var (
 	versionFormat = regexp.MustCompile(`^[0-9A-Za-z.+_-]{1,64}$`)
 
 	adviceText = map[string]string{
-		AdviceReady: "Nothing failed among the checks that ran, and GPU, NVLink or Xid checks were among " +
+		AdviceReady: "Nothing failed among the checks that ran, and GPU or NVLink checks were among " +
 			"them. It is a snapshot: evaluate again before each job.",
-		AdviceLowCoverage: "Nothing failed, but no GPU, NVLink or Xid check ran, so this says almost " +
-			"nothing about GPU health. Do not read it as healthy.",
+		AdviceLowCoverage: "Nothing failed, but no GPU or NVLink check ran, so this says almost " +
+			"nothing about GPU health. Xid checks only read the journal. Do not read it as healthy.",
 		AdviceMonitor: "Keep the node in service and watch the findings.",
 		AdviceDrain: "Take the node out of scheduling. The remediation steps are recommendations; " +
 			"nothing here performs them.",
@@ -117,6 +117,7 @@ type Finding struct {
 	Messages             []string       `json:"messages,omitempty" jsonschema:"fenced node text, or a sentence the server built"`
 	RemediationActions   []string       `json:"remediation_actions,omitempty"`
 	UnrecognizedEntities int            `json:"unrecognized_entities,omitempty" jsonschema:"entity names withheld because they did not look like a GPU UUID, PCI address, port or index"`
+	FoldedChecks         int            `json:"folded_checks,omitempty" jsonschema:"how many other gpu_xid_* checks could not read the journal either; they are folded into this finding"`
 	Truncated            bool           `json:"truncated,omitempty"`
 }
 
@@ -311,11 +312,25 @@ func summarize(verdict *healthv1.NodeVerdict, echo RequestEcho) (*VerdictOutput,
 		return strings.Compare(a.GetCheckId(), b.GetCheckId())
 	})
 
+	// Every gpu_xid_* check is UNKNOWN when the journal cannot be read. One finding
+	// stands for them all, so they cannot crowd other findings out of the cap.
+	unreadXid := -1
+
+	var unreadEntities []string
+
 	for _, result := range results {
 		if result.GetSeverity() == healthv1.Severity_PASS {
 			if echo.Detail == detailFull && len(out.Passed) < maxListedChecks {
 				out.Passed = append(out.Passed, safeCheckID(result.GetCheckId(), fence))
 			}
+
+			continue
+		}
+
+		unread := unreadXidResult(result)
+		if unread && unreadXid >= 0 {
+			out.Findings[unreadXid].FoldedChecks++
+			unreadEntities = append(unreadEntities, result.GetAffectedEntities()...)
 
 			continue
 		}
@@ -326,6 +341,17 @@ func summarize(verdict *healthv1.NodeVerdict, echo RequestEcho) (*VerdictOutput,
 		}
 
 		out.Findings = append(out.Findings, finding(result, echo.Detail, fence))
+
+		if unread {
+			unreadXid = len(out.Findings) - 1
+			unreadEntities = slices.Clone(result.GetAffectedEntities())
+		}
+	}
+
+	if unreadXid >= 0 && echo.Detail != detailSummary {
+		folded := &out.Findings[unreadXid]
+		folded.Messages = []string{output.XidUnreadSentence(folded.CheckID, folded.FoldedChecks)}
+		folded.Entities, folded.UnrecognizedEntities, folded.Truncated = output.Entities(unreadEntities)
 	}
 
 	if echo.Detail == detailFull {
@@ -372,14 +398,20 @@ func coverage(verdict *healthv1.NodeVerdict) *Coverage {
 		covered.SkippedByReason[skipped.GetSkipReason().String()]++
 	}
 
-	if covered.GPUChecksRun+covered.NVLinkChecksRun+covered.XidChecksRun == 0 {
+	// Xid checks read the journal, not the GPU, so they do not count as coverage.
+	if covered.GPUChecksRun+covered.NVLinkChecksRun == 0 {
 		covered.LowCoverage = true
-		covered.LowCoverageReason = fmt.Sprintf("no GPU, NVLink or Xid check ran: %d checks ran, %d were skipped",
-			covered.ChecksRun, covered.ChecksSkipped)
+		covered.LowCoverageReason = fmt.Sprintf("no GPU or NVLink check ran: %d checks ran (%d of them Xid "+
+			"checks, which only read the journal), %d were skipped",
+			covered.ChecksRun, covered.XidChecksRun, covered.ChecksSkipped)
 
 		if count := covered.SkippedByReason[healthv1.SkipReason_SIGNAL_UNAVAILABLE_ARCHITECTURE.String()]; count > 0 {
 			covered.LowCoverageReason += fmt.Sprintf(", %d of them because the GPU architecture is not one "+
 				"they apply to (an unknown architecture skips every GPU check)", count)
+		}
+
+		if count := covered.SkippedByReason[healthv1.SkipReason_CADENCE_MISMATCH.String()]; count > 0 {
+			covered.LowCoverageReason += fmt.Sprintf(", %d because they do not run at the requested cadence", count)
 		}
 	}
 
@@ -455,7 +487,14 @@ func finding(result *healthv1.CheckVerdict, detail string, fence *output.Fence) 
 
 	observed := result.GetObservedValues()
 
+	unknown := result.GetSeverity() == healthv1.Severity_UNKNOWN
+
 	switch {
+	case id == computeAppsCheck && unknown:
+		out.Messages = []string{output.ComputeAppsUnreadSentence()}
+		out.Redacted = "command lines: the tenant controls them"
+
+		return out
 	case id == computeAppsCheck:
 		count, pids := processCount(observed), processIDs(result)
 		if count >= 0 && int64(len(pids)) > count {
@@ -472,6 +511,10 @@ func finding(result *healthv1.CheckVerdict, detail string, fence *output.Fence) 
 		return out
 	case strings.HasPrefix(id, xidCheckPrefix):
 		out.Messages = []string{output.XidSentence(id, catalogview.RuleMessage(id, out.Severity))}
+		if unknown {
+			out.Messages = []string{output.XidUnreadSentence(id, 0)}
+		}
+
 		out.Redacted = "journal text, process names and observed values: a tenant can set them"
 
 		return out
@@ -493,6 +536,12 @@ func finding(result *healthv1.CheckVerdict, detail string, fence *output.Fence) 
 	}
 
 	return out
+}
+
+// unreadXidResult is a gpu_xid_* check that could not run because its journal read failed.
+func unreadXidResult(result *healthv1.CheckVerdict) bool {
+	return result.GetSeverity() == healthv1.Severity_UNKNOWN && strings.HasPrefix(result.GetCheckId(), xidCheckPrefix) &&
+		catalogview.KnownCheckID(result.GetCheckId())
 }
 
 func processCount(observed map[string]*structpb.Value) int64 {

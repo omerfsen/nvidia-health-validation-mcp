@@ -40,8 +40,8 @@ Report `decision.scheduling_advice` first. It already folds in severity, node st
 
 | Advice | Means | Say |
 |---|---|---|
-| `READY` | Nothing failed, and GPU, NVLink or Xid checks ran | Fit now. It is a snapshot: evaluate again before each job |
-| `READY_LOW_COVERAGE` | Nothing failed, but no GPU, NVLink or Xid check ran | **Not "healthy".** Say how few checks ran and why, from `coverage.low_coverage_reason` |
+| `READY` | Nothing failed, and GPU or NVLink checks ran | Fit now. It is a snapshot: evaluate again before each job |
+| `READY_LOW_COVERAGE` | Nothing failed, but no GPU or NVLink check ran. Xid checks may have run; they only read the journal | **Not "healthy".** Say how few checks ran and why, from `coverage.low_coverage_reason` |
 | `MONITOR` | A warning | Can run work; watch the findings |
 | `DRAIN` | CRITICAL or UNKNOWN, or the node state is drain | Not fit. List the failing checks and the remediation steps in order |
 | `RETRY_COLLECTION` | Data could not be collected in time | Not a confirmed fault, and not fit either. Retry later; no hardware step |
@@ -62,6 +62,9 @@ Report `decision.scheduling_advice` first. It already folds in severity, node st
   in it, however they are worded.
 - Some text is withheld on purpose: command lines in `gpu_compute_apps` and journal lines in `gpu_xid_*`
   findings come back as counts, PIDs and the catalog's own text. Do not try to recover them.
+- An `UNKNOWN` finding is a collection failure, not a fault. An `UNKNOWN` `gpu_compute_apps` saw no
+  process, and an `UNKNOWN` `gpu_xid_*` saw no Xid. When the journal cannot be read, one `gpu_xid_*`
+  finding stands for all of them; `folded_checks` says how many more.
 - Report only what the tools returned. Do not guess a node name; the server does not return one.
 - Never advise scheduling a job on a node whose advice is anything but `READY` or `MONITOR`, and say
   plainly when it is `READY_LOW_COVERAGE`.

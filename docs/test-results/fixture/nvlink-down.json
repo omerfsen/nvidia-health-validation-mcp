@@ -12,7 +12,7 @@
         "owner_check": false,
         "reachable": true,
         "schema_version": "0.7",
-        "serve_address": "127.0.0.1:33191",
+        "serve_address": "127.0.0.1:42407",
         "stuck_calls": [],
         "stuck_calls_truncated": false
       },
@@ -47,7 +47,7 @@
           ],
           "scheduling_advice": "DRAIN"
         },
-        "fence_marker": "untrusted-hv-text-adad829dc51df8d3",
+        "fence_marker": "untrusted-hv-text-cb1ce566eaa30626",
         "findings": [
           {
             "category": "nvlink",
@@ -56,11 +56,11 @@
               "GPU-22222222-2222-4222-8222-222222222222"
             ],
             "messages": [
-              "\u003cuntrusted-hv-text-adad829dc51df8d3\u003eGPU GPU-22222222-2222-4222-8222-222222222222: 18 inactive NVLinks (allowed: 0).\u003c/untrusted-hv-text-adad829dc51df8d3\u003e"
+              "\u003cuntrusted-hv-text-cb1ce566eaa30626\u003eGPU GPU-22222222-2222-4222-8222-222222222222: 18 inactive NVLinks (allowed: 0).\u003c/untrusted-hv-text-cb1ce566eaa30626\u003e"
             ],
             "name": "NVLink Active Links",
             "observed_values": {
-              "gpu_id": "\u003cuntrusted-hv-text-adad829dc51df8d3\u003eGPU-22222222-2222-4222-8222-222222222222\u003c/untrusted-hv-text-adad829dc51df8d3\u003e",
+              "gpu_id": "\u003cuntrusted-hv-text-cb1ce566eaa30626\u003eGPU-22222222-2222-4222-8222-222222222222\u003c/untrusted-hv-text-cb1ce566eaa30626\u003e",
               "inactive_count": 18
             },
             "operational_state": "drain",
@@ -253,7 +253,7 @@
             "reason": "SENSOR_MISSING"
           }
         ],
-        "timestamp": "2026-11-26T20:24:56Z",
+        "timestamp": "2026-11-26T22:09:18Z",
         "truncated": false,
         "version_skew": false
       },
@@ -264,7 +264,8 @@
       "is_error": false
     }
   ],
-  "recorded": "2026-11-26T20:24:57Z",
+  "recorded": "2026-11-26T22:09:18Z",
   "scenario": "nvlink-down",
+  "scenario_claim": "CRITICAL nvlink_active: every NVLink on one GPU is inactive",
   "source": "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"
 }

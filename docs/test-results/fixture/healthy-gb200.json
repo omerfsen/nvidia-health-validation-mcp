@@ -12,7 +12,7 @@
         "owner_check": false,
         "reachable": true,
         "schema_version": "0.7",
-        "serve_address": "127.0.0.1:35259",
+        "serve_address": "127.0.0.1:38343",
         "stuck_calls": [],
         "stuck_calls_truncated": false
       },
@@ -37,12 +37,12 @@
           "xid_checks_run": 97
         },
         "decision": {
-          "explanation": "Nothing failed among the checks that ran, and GPU, NVLink or Xid checks were among them. It is a snapshot: evaluate again before each job.",
+          "explanation": "Nothing failed among the checks that ran, and GPU or NVLink checks were among them. It is a snapshot: evaluate again before each job.",
           "overall_severity": "PASS",
           "remediation_actions": [],
           "scheduling_advice": "READY"
         },
-        "fence_marker": "untrusted-hv-text-614e19d8d1186e7f",
+        "fence_marker": "untrusted-hv-text-0c8ce01afd4ff11c",
         "findings": [],
         "passed": [
           "cpu_count",
@@ -226,7 +226,7 @@
             "reason": "SENSOR_MISSING"
           }
         ],
-        "timestamp": "2026-11-26T20:24:57Z",
+        "timestamp": "2026-11-26T22:09:18Z",
         "truncated": false,
         "version_skew": false
       },
@@ -237,8 +237,7 @@
       "is_error": false
     }
   ],
-  "recorded": "2026-11-26T20:24:57Z",
+  "recorded": "2026-11-26T22:09:18Z",
   "scenario": "healthy-gb200",
-  "scenario_claim": "PASS: a GB200 node with 4 GPUs whose GPU, NVLink and Xid checks all run and pass",
   "source": "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"
 }

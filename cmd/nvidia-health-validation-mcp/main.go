@@ -171,7 +171,7 @@ func run(opts options, getenv func(string) string, stdin io.ReadCloser, stdout i
 		"version", buildVersion(), "catalog", catalogview.Version(), "serve", clientConfig.Address(),
 		"evaluateAllowed", serverConfig.AllowEvaluate, "ownerCheck", clientConfig.OwnerUID != nil)
 
-	runErr := mcpServer.MCP().Run(ctx, &mcp.IOTransport{Reader: stdin, Writer: stdout})
+	runErr := mcpServer.MCP().Run(ctx, &server.StdioTransport{Reader: stdin, Writer: stdout, Logger: logger})
 
 	cancelShutdown()
 

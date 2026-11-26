@@ -189,6 +189,25 @@ func ComputeAppsSentence(count int64, pids []int64) string {
 		". Command lines are withheld because the tenant controls them."
 }
 
+// ComputeAppsUnreadSentence is what the server says for a gpu_compute_apps check that
+// could not collect: nothing was observed, so it must not sound like live processes.
+func ComputeAppsUnreadSentence() string {
+	return "The compute process list could not be read, so no process was confirmed on this GPU. " +
+		"Collect again before acting on processes."
+}
+
+// XidUnreadSentence is what the server says for gpu_xid_* checks that could not read
+// the journal. others is how many more such checks this sentence stands for.
+func XidUnreadSentence(checkID string, others int) string {
+	subject := fmt.Sprintf("Check %s", checkID)
+	if others > 0 {
+		subject = fmt.Sprintf("Check %s and %d other gpu_xid_* checks", checkID, others)
+	}
+
+	return subject + " could not read the journal; no Xid was confirmed. Collect again before treating " +
+		"this as an Xid fault."
+}
+
 // XidSentence is what the server says for a gpu_xid_* finding, instead of text that can
 // hold a raw kernel log line and a process name the tenant chose.
 func XidSentence(checkID, catalogMessage string) string {

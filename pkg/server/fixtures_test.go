@@ -17,6 +17,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -215,4 +216,69 @@ func cpuNotCollected(timeout bool) func(*testing.T) []byte {
 
 		return evaluate(t, "GB200", cpu.ErroredCPU(cause, cpu.MeasurementSignals()...), healthyGPU(gpu0))
 	}
+}
+
+// h200Continuous is an H200 node at CONTINUOUS cadence: no NVLink check lists H200 and
+// its one GPU check is PROLOG, so only cpu and Xid checks run, and the verdict is a PASS.
+func h200Continuous(t *testing.T) []byte {
+	t.Helper()
+
+	continuous := health.Continuous
+
+	verdict, err := catalog.New(catalog.WithArchitecture("H200")).EvaluateAllWithOptions(
+		catalog.EvaluationOptions{Cadence: &continuous}, healthyCPU(), healthyGPU(gpu0),
+		&xid.XidMeasurement{XidCounts: map[int64]int64{}, FatalXidCounts: map[int64]int64{}, Since: "0"})
+	require.NoError(t, err)
+
+	return encode(t, verdict)
+}
+
+// noGPUMeasurement is a GB200 node whose serve supplied cpu and Xid measurements but no
+// GPU ones, so every GPU and NVLink check is skipped.
+func noGPUMeasurement(t *testing.T) []byte {
+	t.Helper()
+
+	return evaluate(t, "GB200", healthyCPU(),
+		&xid.XidMeasurement{XidCounts: map[int64]int64{}, FatalXidCounts: map[int64]int64{}, Since: "0"})
+}
+
+// journalUnread is a GB200 node whose journal could not be read: every Xid check is UNKNOWN.
+func journalUnread(t *testing.T) []byte {
+	t.Helper()
+
+	measurement := xid.ErroredXid("0", errors.New("journal: "+hostile+": permission denied"))
+
+	return evaluate(t, "GB200", healthyCPU(), healthyGPU(gpu0), &measurement)
+}
+
+// computeAppsUnread is a GB200 node where gpu0 could not be read at all, so
+// gpu_compute_apps is UNKNOWN and saw no process.
+func computeAppsUnread(t *testing.T) []byte {
+	t.Helper()
+
+	unread := gpu.ErroredGPU(gpu0, errors.New("nvml: "+hostile))
+
+	return evaluate(t, "GB200", healthyCPU(), &unread, healthyGPU(gpu1))
+}
+
+// fewerProcessesThanPIDs reports one compute process but has two pid= lines.
+func fewerProcessesThanPIDs(t *testing.T) []byte {
+	t.Helper()
+
+	held := healthyGPU(gpu0)
+	held.ComputeProcessCount = 1
+	held.ComputeProcessCmdlines = "pid=4242 \"python a.py\"\npid=4343 \"python b.py\""
+
+	return evaluate(t, "GB200", healthyCPU(), held, healthyGPU(gpu1))
+}
+
+// longMessage fails a check whose message is far over the 300-byte cap.
+func longMessage(t *testing.T) []byte {
+	t.Helper()
+
+	return encode(t, health.AggregateNodeVerdict([]health.CheckVerdict{{
+		Timestamp: time.Now(), CheckID: "architecture_discovery", Category: health.Node,
+		Severity: health.Critical, RecommendedAction: health.GenericDrain(),
+		Messages: []string{strings.Repeat("x", 1000) + "TAIL"},
+	}}))
 }

@@ -44,6 +44,7 @@ MCP client --stdio--> pkg/server --> pkg/catalogview --> hv catalog, compiled in
 | `docs/build-log.md` | Every step, failure and dead end |
 | `lab/hvfixture/` | A fake serve for the e2e tests, in its own module |
 | `tests/e2e/` | e2e tests through the built binary (`-tags e2e`) |
+| `docs/evals/evals.xml`, `tests/evals/` | Evaluation questions, and the test that checks their answers through the tools (`-tags evals`) |
 | `docs/test-results/` | What the e2e runs returned, one directory per target |
 | `skills/nvidia-health-validation/` | How an agent should use the tools |
 
@@ -57,10 +58,11 @@ make e2e               # the built binary over stdio against lab/hvfixture; rewr
 make image             # docker build, tagged nvidia-health-validation-mcp:local
 make e2e-image         # the fixture e2e with the server in its image (IMAGE=<ref>)
 make e2e-serve         # the e2e against a real serve: HV_SERVE_PORT=<port> HV_HOST_LABEL=<label>
+make evals             # check every answer in docs/evals/evals.xml through the built binary
 ```
 
 `lab/hvfixture` is its own Go module: health-validation's real verdict server and catalog over
-synthetic measurements, so its results are not a real node's. `make scan` is not written yet and exits 1.
+synthetic measurements, so its results are not a real node's. `make scan` runs govulncheck, OSV, Trivy (telemetry off) and mcp-scanner; the tools must be installed.
 
 ## Rules that keep it safe
 
@@ -71,6 +73,9 @@ synthetic measurements, so its results are not a real node's. `make scan` is not
   catalog.
 - **Write each tool as an `mcp.Tool` literal** with its name and all four annotation hints in it, so a
   scanner reading the source sees them. `register` adds only the call limit and the panic guard.
+  `protocol.go` holds what goes around the SDK: the receiving middleware (null arguments, a panic guard for
+  all of `tools/call`, `resources/*` and `prompts/*` not found) and `StdioTransport` (parse errors, no reply
+  to a cancelled request).
 - **Do not expose `node_id`, `execution_context` or `xid_to`** on `hv_get_verdict`. `OUT_OF_BAND` in
   particular would skip every check and read as a PASS.
 - **Evaluation stays off unless `HV_MCP_ALLOW_EVALUATE` is exactly `true`.** Keep the single flight (a
@@ -81,7 +86,8 @@ synthetic measurements, so its results are not a real node's. `make scan` is not
   call). Check IDs and observed-value keys the pinned catalog does not name are fenced too. `gpu_compute_apps` messages carry tenant command lines and `gpu_xid_*` messages carry journal
   text: return only counts, PIDs and the pinned catalog's own text for those. Never return `node_id`.
 - **A bad verdict is never a pass.** Anything `DecodeVerdict` refuses becomes `NO_VERDICT`. A PASS
-  where no GPU, NVLink or Xid check ran is `READY_LOW_COVERAGE`.
+  where no GPU or NVLink check ran is `READY_LOW_COVERAGE`, whatever the Xid count: Xid checks only read
+  the journal.
 - **Raw errors go to stderr only.** Callers get `hvclient` error kinds through `callerError`.
 - **The target is fixed:** `127.0.0.1` or `::1`, no proxy, no redirects. No tool argument can change it.
 - **stdout belongs to MCP.** Log to stderr.

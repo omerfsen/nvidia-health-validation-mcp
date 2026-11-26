@@ -21,7 +21,7 @@
       "is_error": false
     }
   ],
-  "recorded": "2026-11-26T20:25:58Z",
+  "recorded": "2026-11-26T22:10:03Z",
   "scenario": "status",
   "source": "health-validation serve on pi5: real measurements from this host"
 }
