@@ -33,7 +33,15 @@ in `make e2e`, one file per case: a healthy GB200, NVLink down, Xid 79, an unkno
 threshold override, a discovery failure, a busy source, serve stopped or killed mid-call, a refused
 second call, a refused port owner, and evaluation left off. **These come from synthetic measurements:**
 `lab/hvfixture` runs health-validation's real verdict server and catalog, but feeds it made-up readings,
-not a GPU. No real serve has been run yet; see [What is not tested](#what-is-not-tested).
+not a GPU.
+
+[docs/test-results/build-machine](docs/test-results/build-machine) and
+[docs/test-results/pi5](docs/test-results/pi5) come from `make e2e-serve` against a real
+`health-validation serve` v0.4.0-rc.1, run as a normal user with the socket-owner check on. On the build
+machine (RTX 4080 SUPER, an architecture health-validation does not know) only `cpu_count` ran and 115
+checks were skipped, so the server answers `READY_LOW_COVERAGE`, not healthy. On the Pi (no GPU)
+discovery fails and the server answers `DRAIN`. Neither proves any GPU check; see
+[What is not tested](#what-is-not-tested).
 
 ## Standards
 
@@ -212,9 +220,9 @@ Nothing is retried: a busy serve (HTTP 429) is reported as `busy`.
 Everything below was proven only with synthetic measurements judged by health-validation's own engine
 (in unit tests against a fake serve, and in `make e2e` against `lab/hvfixture`), or not at all:
 
-- **Any real serve.** Not a real `health-validation serve` on the Pi (no GPU) or on the build machine
-  (RTX 4080 SUPER, an architecture health-validation does not know). `make e2e-serve` is written for
-  it but has not been run.
+- **A real serve on a GPU health-validation knows.** Real serve ran only on the build machine (RTX 4080
+  SUPER, unknown architecture: only `cpu_count` runs) and the Pi (no GPU: discovery fails). The
+  fixture-only e2e tests (cancel, kill mid-call, second call, owner refusal) did not run against real serve.
 - **The published image:** `make e2e-image` passed once against a locally built image on the Pi, with
   the SIGTERM test skipped, since a signal reaches the docker client, not the server. Nothing is
   published yet. `make scan` is not written yet and exits 1.
@@ -226,7 +234,8 @@ Everything below was proven only with synthetic measurements judged by health-va
 - **A real `collection_source_busy`** verdict from serve.
 - **Load across a fleet**, or a real HTTP 429 from serve.
 - **The race detector on arm64:** it cannot start on the Pi's kernel. It ran in an emulated amd64 container.
-- **The binaries for anything but Linux on Arm:** the others are cross-compiled and not run.
+- **The binaries for anything but Linux on arm64 and amd64:** linux/amd64 ran on the build machine; the
+  others are cross-compiled and not run.
 - **Evaluations** (questions a model answers through the tools), Cisco `mcp-scanner`, Trivy and OSV.
 
 Every step, failure and dead end is in [docs/build-log.md](docs/build-log.md).

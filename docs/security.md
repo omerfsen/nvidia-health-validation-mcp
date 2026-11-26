@@ -8,8 +8,8 @@ questions are how little a fooled model can do, and how much it can be fooled by
 A control is listed here only if a test enforces it. Tests named `Test...` are unit tests in `pkg/` and
 `cmd/`, run over a real MCP session against a fake serve. Tests marked (e2e) are in `tests/e2e` and run
 the built binary over stdio against `lab/hvfixture`, which is health-validation's real verdict server and
-catalog over synthetic measurements. **None has run against a real serve yet:** see
-[Known limits](#known-limits).
+catalog over synthetic measurements. `make e2e-serve` also ran against a real `health-validation serve`
+on the build machine and the Pi; neither has a GPU health-validation knows. See [Known limits](#known-limits).
 
 ## Threat model
 
@@ -165,10 +165,11 @@ yet; signing, an SBOM, provenance and Trivy and OSV scans come with the release 
 
 ## Known limits
 
-- **No end-to-end test against a real serve or the image.** The unit tests use a fake serve built from
+- **Real serve only on hardware health-validation does not know, and no published image.** The unit tests use a fake serve built from
   health-validation's own engine and wire code. The e2e tests run the built binary against
   `lab/hvfixture`, health-validation's real verdict server over synthetic measurements; their results are
-  in [test-results/fixture](test-results/fixture). No real `health-validation serve` has been run.
+  in [test-results/fixture](test-results/fixture). The real `health-validation serve` v0.4.0-rc.1 runs: [test-results/build-machine](test-results/build-machine) and [test-results/pi5](test-results/pi5);
+  they prove the wire, the decode and the low-coverage and discovery-failure answers, not any GPU check.
   `make e2e-image` passed once on the Pi against a locally built image, without the SIGTERM test.
 - A crash or panic in a tool returns only `error executing tool <name>`, with detail in the log. This is
   in the code but no test triggers it.

@@ -284,3 +284,18 @@ A review found 16 issues; two pairs were the same issue. What changed, and why:
 | `make test-race-amd64` | all 5 packages pass, no data race |
 | `make e2e` | 11 tests and 7 scenario subtests pass, `TestRealServe` skipped; `docs/test-results/fixture` rewritten with the new hints |
 | `make image`, then `make e2e-image` | 31.2 MB image; all e2e tests pass but `TestSigtermCancelsEvaluate` (skips in the image) and `TestRealServe` |
+
+## 2026-11-26: real serve
+
+- Built `health-validation` v0.4.0-rc.1 with `CGO_ENABLED=1 go build ./toolkit/cmd/health-validation` on the
+  build machine (linux/amd64) and the Pi (linux/arm64); Bazel is not installed on either.
+- Ran `serve --address 127.0.0.1:18080` as a normal user. No DCGM hostengine on either host.
+- Build machine: hv logs that the RTX 4080 SUPER architecture is unknown; only `cpu_count` runs, 115 checks
+  skip with `SIGNAL_UNAVAILABLE_ARCHITECTURE`, PASS in 15 ms. The server answers `READY_LOW_COVERAGE`.
+  A GPU process was running on that host; it did not change the result, as `gpu_compute_apps` is skipped
+  for an unknown architecture.
+- Pi: discovery finds no GPU; `architecture_discovery` CRITICAL, drain. The server answers `DRAIN`.
+- `make e2e-serve HV_SERVE_PORT=18080 HV_HOST_LABEL=<label> HV_SERVE_UID=<uid>` passed on both: `TestRealServe`
+  (ALL, CONTINUOUS, PROLOG), evaluation off by default, serve stopped, and the raw wire test. The
+  fixture-only tests skip by design. Results: `docs/test-results/build-machine`, `docs/test-results/pi5`;
+  checked for host names, user names and addresses before saving.

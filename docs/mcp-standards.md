@@ -4,7 +4,8 @@ Checked on 2026-11-26 against spec revision **2026-07-28**, with go-sdk v1.8.0. 
 [What to re-check](#what-to-re-check). "Tested" names the test that proves it. Tests marked (e2e) are in
 `tests/e2e`: they run the built binary on its real stdio against `lab/hvfixture`, health-validation's real
 verdict server over synthetic measurements ([results](test-results/fixture)). The others are unit or
-in-process tests. Nothing has run against a real serve yet.
+in-process tests. `make e2e-serve` ran against a real `health-validation serve` on the build machine and
+the Pi ([build machine](test-results/build-machine), [Pi](test-results/pi5)).
 
 ## What the standards are
 
