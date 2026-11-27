@@ -43,6 +43,7 @@ test:
 
 # GOGC=off: the Go runtime's collector crashed under qemu user emulation.
 test-race-amd64:
+	go mod download
 	docker run --rm --platform linux/amd64 -e GOGC=off -e GOTOOLCHAIN=local -e GOFLAGS=-mod=mod \
 		-e GOCACHE=/tmp/gocache -v "$(CURDIR)":/src:ro -v "$$(go env GOMODCACHE)":/go/pkg/mod:ro -w /src \
 		$(RACE_IMAGE) go test -race -count=1 -timeout 60m ./...
@@ -75,7 +76,7 @@ lab-fixture:
 e2e: lab-test
 	go vet -tags e2e ./tests/...
 	mkdir -p docs/test-results/fixture
-	E2E_RESULTS=$(CURDIR)/docs/test-results/fixture $(E2E)
+	E2E_RESULTS="$(CURDIR)/docs/test-results/fixture" $(E2E)
 
 e2e-serve:
 	@test -n "$(HV_SERVE_PORT)" || { echo "set HV_SERVE_PORT to the port health-validation serve listens on" >&2; exit 2; }
@@ -83,7 +84,7 @@ e2e-serve:
 	go vet -tags e2e ./tests/...
 	mkdir -p docs/test-results/$(HV_HOST_LABEL)
 	HV_SERVE_PORT=$(HV_SERVE_PORT) HV_HOST_LABEL=$(HV_HOST_LABEL) HV_SERVE_UID=$(HV_SERVE_UID) \
-		E2E_RESULTS=$(CURDIR)/docs/test-results/$(HV_HOST_LABEL) $(E2E)
+		E2E_RESULTS="$(CURDIR)/docs/test-results/$(HV_HOST_LABEL)" $(E2E)
 
 e2e-image:
 	E2E_IMAGE=$(IMAGE) $(E2E)
