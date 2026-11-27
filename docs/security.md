@@ -9,7 +9,9 @@ A control is listed here only if a test enforces it. Tests named `Test...` are u
 `cmd/`, run over a real MCP session against a fake serve. Tests marked (e2e) are in `tests/e2e` and run
 the built binary over stdio against `lab/hvfixture`, which is health-validation's real verdict server and
 catalog over synthetic measurements. `make e2e-serve` also ran against a real `health-validation serve`
-on the build machine and the Pi; neither has a GPU health-validation knows. See [Known limits](#known-limits).
+on the build machine and the Pi; neither has a GPU health-validation knows. It runs only the real-serve
+e2e tests; the fixture-only cases skip there, including cancellation, SIGTERM and the owner refusal. See
+[Known limits](#known-limits).
 
 ## Threat model
 
@@ -44,7 +46,7 @@ first proves its detector sees a real listener). Its one outbound target is serv
 | `HTTP_PROXY` and friends are ignored: the transport has no proxy function at all | `TestProxySettingsAreIgnored` |
 | Redirects are refused, not followed | `TestRedirectsAreRefused` |
 | Answers over 4 MiB are refused | `TestBodiesAreCapped` |
-| With `HV_MCP_SERVE_UID` set, the listening socket's owner is read from `/proc/net/tcp` (or `tcp6`) before each call, and another owner is refused | `TestListenerOwner`, `TestOwnerCheck`, `TestOwnerCheck` (e2e) |
+| With `HV_MCP_SERVE_UID` set, every connection to serve is checked before a request goes over it: serve's end of that connection is found in `/proc/net/tcp` (or `tcp6`), and the connection is refused unless that uid owns it. The check binds to the connection the request uses, so a listener swapped after an earlier check cannot answer | `TestPeerOwner`, `TestProcAddress`, `TestListenerOwner`, `TestOwnerCheckOnARealConnection`, `TestOwnerCheck`, `TestOwnerCheck` (e2e) |
 
 The owner check is optional and Linux only. Without it, a local process that takes serve's port while
 serve is down can answer. It can still only return something that decodes as a schema `0.7` verdict (see

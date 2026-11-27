@@ -387,3 +387,26 @@ coverage wording; they were not run again.
   not compare it. `make docs` is compared, and was clean.
 - Not in CI: `mcp-scanner`, `make test-race-amd64` (go-binaries runs `go test -race` on amd64 runners), and
   `make e2e-serve`, which needs a real serve.
+
+## 2026-11-27: review fixes from the upstream PR
+
+CodeRabbit reviewed the same server in health-validation PR #372. Ported the fixes from its commits 5702080,
+3bdfbf5 and 6f892d5, adapted to this repo's paths and its pinned health-validation v0.4.0-rc.1:
+
+- In `full` detail, a PASS dropped at the 200-check cap now sets `truncated`; `xid79` shows `truncated: true`.
+- `RuleMessage` returns a catalog message only when every rule at that severity shares it. `gpu_xid_154`
+  has a reset and a reboot rule, both CRITICAL, so it now gets the neutral sentence, not the reboot one.
+- The owner check runs on every connection, before a request goes over it, instead of on the listener
+  before the call: a port taken over between the check and the dial is refused. `security.md` updated.
+- `HV_MCP_EVALUATE_INTERVAL_SECONDS` and `HV_MCP_EVALUATE_TIMEOUT_SECONDS` are range-checked before the
+  conversion to a duration; `18446744083` used to wrap to about 9 s and pass.
+- hvfixture: the cancel test cancels after `evaluate_received`, not on a timer; the pipe writer closes when
+  serve returns.
+- evals: 30 s handshake and readiness deadlines, the catalog default when no architecture value exists,
+  coverage counters required present, and each solver bound to a hash of its full question.
+- SKILL.md: an UNKNOWN `gpu_compute_apps` or `gpu_xid_*` means the data could not be read, not none found.
+- Makefile: result paths quoted; `go mod download` before the race container.
+
+Skipped, as they do not apply here: the nested-module question (upstream only), the race container's
+parent-checkout mount (this repo has no `replace ../`), the SKILL.md link fix (this README has an `Install`
+heading, so `#install` resolves), and the upstream commit that removed the build-machine and Pi results.

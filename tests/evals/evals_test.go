@@ -24,6 +24,8 @@ package evals
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -158,20 +160,23 @@ func readEvals(t *testing.T) []qaPair {
 type solver struct {
 	solve    func(t *testing.T, s *session) string
 	scenario string
+	// question is the first 16 hex digits of the SHA-256 of the question the solver
+	// answers, so any edit to a question fails until its solver is checked again.
+	question string
 }
 
 // The solvers, in the order of the qa_pairs in docs/evals/evals.xml.
 var solvers = []solver{
-	{scenario: catalogOnly, solve: notContinuous},
-	{scenario: catalogOnly, solve: nvlinkNotOnH100},
-	{scenario: catalogOnly, solve: gb300PowerHeadroom},
-	{scenario: catalogOnly, solve: onlyStepOfXid78},
-	{scenario: "unknown-architecture", solve: adviceForAPass},
-	{scenario: "discovery-failure", solve: adviceWithoutDiscovery},
-	{scenario: "xid79", solve: xidOccurrences},
-	{scenario: "overridden-threshold", solve: catalogPowerMax},
-	{scenario: "busy-source", solve: stuckSource},
-	{scenario: "healthy-gb200", solve: xidSkippedOnGB200},
+	{scenario: catalogOnly, solve: notContinuous, question: "a36747d05f21102b"},
+	{scenario: catalogOnly, solve: nvlinkNotOnH100, question: "875e470d3be1aa9d"},
+	{scenario: catalogOnly, solve: gb300PowerHeadroom, question: "52bcd6e3bbecdd77"},
+	{scenario: catalogOnly, solve: onlyStepOfXid78, question: "bf83d96da9b114ca"},
+	{scenario: "unknown-architecture", solve: adviceForAPass, question: "6cd7b30c3531c6cf"},
+	{scenario: "discovery-failure", solve: adviceWithoutDiscovery, question: "4f32b32667786ab0"},
+	{scenario: "xid79", solve: xidOccurrences, question: "5481d754b874a1bf"},
+	{scenario: "overridden-threshold", solve: catalogPowerMax, question: "009b8a93d8a13d63"},
+	{scenario: "busy-source", solve: stuckSource, question: "2fc09bee829d70dc"},
+	{scenario: "healthy-gb200", solve: xidSkippedOnGB200, question: "86d3dff2ac6f328f"},
 }
 
 func TestEvaluationAnswers(t *testing.T) {
@@ -183,6 +188,9 @@ func TestEvaluationAnswers(t *testing.T) {
 			t.Parallel()
 
 			require.Equal(t, solvers[i].scenario, pair.Scenario, "question: %s", pair.Question)
+			sum := sha256.Sum256([]byte(pair.Question))
+			require.Equal(t, solvers[i].question, hex.EncodeToString(sum[:])[:16],
+				"the question changed, so check its solver, then update the hash")
 
 			s := open(t, pair.Scenario)
 			got := solvers[i].solve(t, s)
@@ -212,8 +220,11 @@ func open(t *testing.T, scenario string) *session {
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "evals", Version: "test"}, nil)
 
-	connected, err := client.Connect(t.Context(), &mcp.CommandTransport{Command: command}, nil)
-	require.NoError(t, err)
+	handshake, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	connected, err := client.Connect(handshake, &mcp.CommandTransport{Command: command}, nil)
+	require.NoError(t, err, "the MCP handshake")
 	t.Cleanup(func() { _ = connected.Close() })
 
 	return &session{client: connected}
@@ -230,8 +241,29 @@ func startFixture(t *testing.T, scenario string) string {
 	require.NoError(t, command.Start())
 	t.Cleanup(func() { _ = command.Process.Kill(); _ = command.Wait() })
 
-	line, err := bufio.NewReader(stdout).ReadString('\n')
-	require.NoError(t, err)
+	type ready struct {
+		err  error
+		line string
+	}
+
+	lines := make(chan ready, 1)
+
+	go func() {
+		line, err := bufio.NewReader(stdout).ReadString('\n')
+		lines <- ready{line: line, err: err}
+	}()
+
+	var line string
+
+	select {
+	case got := <-lines:
+		require.NoError(t, got.err)
+
+		line = got.line
+	case <-time.After(30 * time.Second):
+		// The cleanup kills and reaps the fixture.
+		require.FailNow(t, "hvfixture did not report its address in time")
+	}
 
 	_, port, err := net.SplitHostPort(strings.TrimSpace(strings.TrimPrefix(line, "listening on ")))
 	require.NoError(t, err)
@@ -343,8 +375,8 @@ func thresholdValue(t *testing.T, check description, name, architecture string) 
 		}
 
 		value := spec.Default
-		if architecture != "" {
-			value = spec.PerArchitecture[architecture]
+		if specific, ok := spec.PerArchitecture[architecture]; ok && architecture != "" {
+			value = specific
 		}
 
 		number, ok := value.(float64)
@@ -371,9 +403,9 @@ type skip struct {
 
 type verdict struct {
 	Coverage struct {
-		GPUChecksRun    int  `json:"gpu_checks_run"`
-		NVLinkChecksRun int  `json:"nvlink_checks_run"`
-		XidChecksRun    int  `json:"xid_checks_run"`
+		GPUChecksRun    *int `json:"gpu_checks_run"`
+		NVLinkChecksRun *int `json:"nvlink_checks_run"`
+		XidChecksRun    *int `json:"xid_checks_run"`
 		LowCoverage     bool `json:"low_coverage"`
 	} `json:"coverage"`
 	Decision struct {
@@ -491,14 +523,14 @@ func adviceForAPass(t *testing.T, s *session) string {
 	out := s.evaluate(t, "summary")
 	require.Equal(t, "PASS", out.Decision.OverallSeverity)
 	require.True(t, out.Coverage.LowCoverage)
-	require.Zero(t, out.Coverage.GPUChecksRun+out.Coverage.NVLinkChecksRun+out.Coverage.XidChecksRun)
+	requireNoCoverage(t, out)
 
 	return out.Decision.SchedulingAdvice
 }
 
 func adviceWithoutDiscovery(t *testing.T, s *session) string {
 	out := s.evaluate(t, "summary")
-	require.Zero(t, out.Coverage.GPUChecksRun+out.Coverage.NVLinkChecksRun+out.Coverage.XidChecksRun)
+	requireNoCoverage(t, out)
 
 	return out.Decision.SchedulingAdvice
 }
@@ -561,4 +593,18 @@ func xidSkippedOnGB200(t *testing.T, s *session) string {
 	}
 
 	return sortedList(ids)
+}
+
+// requireNoCoverage checks that the verdict reports each coverage counter, and that each
+// is zero: an absent counter must not read as no checks run.
+func requireNoCoverage(t *testing.T, out verdict) {
+	t.Helper()
+
+	for name, counter := range map[string]*int{
+		"gpu_checks_run": out.Coverage.GPUChecksRun, "nvlink_checks_run": out.Coverage.NVLinkChecksRun,
+		"xid_checks_run": out.Coverage.XidChecksRun,
+	} {
+		require.NotNil(t, counter, "coverage.%s is missing", name)
+		require.Zero(t, *counter, "coverage.%s", name)
+	}
 }

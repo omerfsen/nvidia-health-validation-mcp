@@ -12,7 +12,7 @@
         "owner_check": false,
         "reachable": true,
         "schema_version": "0.7",
-        "serve_address": "127.0.0.1:36987",
+        "serve_address": "127.0.0.1:41171",
         "stuck_calls": [],
         "stuck_calls_truncated": false
       },
@@ -44,13 +44,13 @@
           ],
           "scheduling_advice": "DRAIN"
         },
-        "fence_marker": "untrusted-hv-text-a3e1c2342beaa1bf",
+        "fence_marker": "untrusted-hv-text-f5c1ad6d4ff57d4c",
         "findings": [
           {
             "category": "node",
             "check_id": "architecture_discovery",
             "messages": [
-              "\u003cuntrusted-hv-text-a3e1c2342beaa1bf\u003ecould not determine GPU architecture: synthetic: no GPU inventory\u003c/untrusted-hv-text-a3e1c2342beaa1bf\u003e"
+              "\u003cuntrusted-hv-text-f5c1ad6d4ff57d4c\u003ecould not determine GPU architecture: synthetic: no GPU inventory\u003c/untrusted-hv-text-f5c1ad6d4ff57d4c\u003e"
             ],
             "operational_state": "drain",
             "remediation_actions": [
@@ -71,7 +71,7 @@
         "severity_by_domain": {
           "node": "CRITICAL"
         },
-        "timestamp": "2026-11-26T22:09:18Z",
+        "timestamp": "2026-11-27T13:24:09Z",
         "truncated": false,
         "version_skew": false
       },
@@ -82,7 +82,7 @@
       "is_error": false
     }
   ],
-  "recorded": "2026-11-26T22:09:18Z",
+  "recorded": "2026-11-27T13:24:09Z",
   "scenario": "discovery-failure",
   "scenario_claim": "CRITICAL architecture_discovery: the GPUs could not be enumerated",
   "source": "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"

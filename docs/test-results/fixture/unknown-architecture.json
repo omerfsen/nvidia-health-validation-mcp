@@ -12,7 +12,7 @@
         "owner_check": false,
         "reachable": true,
         "schema_version": "0.7",
-        "serve_address": "127.0.0.1:32791",
+        "serve_address": "127.0.0.1:34081",
         "stuck_calls": [],
         "stuck_calls_truncated": false
       },
@@ -41,7 +41,7 @@
           "remediation_actions": [],
           "scheduling_advice": "READY_LOW_COVERAGE"
         },
-        "fence_marker": "untrusted-hv-text-0ee6d62368e4ba83",
+        "fence_marker": "untrusted-hv-text-1f91ebdd60fc548b",
         "findings": [],
         "passed": [
           "cpu_count"
@@ -518,7 +518,7 @@
             "reason": "SIGNAL_UNAVAILABLE_ARCHITECTURE"
           }
         ],
-        "timestamp": "2026-11-26T22:09:18Z",
+        "timestamp": "2026-11-27T13:24:10Z",
         "truncated": false,
         "version_skew": false
       },
@@ -529,7 +529,7 @@
       "is_error": false
     }
   ],
-  "recorded": "2026-11-26T22:09:18Z",
+  "recorded": "2026-11-27T13:24:10Z",
   "scenario": "unknown-architecture",
   "source": "lab/hvfixture: health-validation's real verdict server and catalog, over synthetic measurements"
 }
