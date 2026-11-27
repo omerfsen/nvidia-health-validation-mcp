@@ -376,7 +376,8 @@ coverage wording; they were not run again.
 - Vendored release-please, pr-title, security, docker and go-binaries from cicd v0.15.0, and added `ci.yml`
   for lint, generated docs, `make e2e`, `make evals` and govulncheck on both modules.
 - cicd's Trivy steps left telemetry on. Set `TRIVY_DISABLE_TELEMETRY` in the vendored docker and go-binaries
-  workflows, the same change as cicd PR #40; re-vendor once it is released.
+  workflows, the same change as cicd PR #40. Re-vendored from cicd v0.15.1, which carries it; the files
+  came out identical, so only `.github/cicd/SOURCE` changed.
 - First CI run: govulncheck found GO-2026-6859 in `net/http` reachable under Go 1.27.3, the version `go.mod`
   named and CI built with. Raised both modules to `go 1.27.4`, which the Dockerfile already used.
 - OSV failed on GO-2026-6094 in cel-go, which govulncheck shows as not reachable. Locally `make scan` was
