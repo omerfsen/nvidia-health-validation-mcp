@@ -165,8 +165,9 @@ the Registry also runs the image in the host's network namespace
 (`TestServerJSONRunsTheImageLikeTheReadme` checks them against the README's line). Use
 `--network=container:<serve container>` when serve runs in a container without host networking. Add
 `-e HV_MCP_ALLOW_EVALUATE=true` only for a client that should evaluate the node. The image is not published
-yet; signing, an SBOM and provenance come with the release pipeline. Trivy (0 HIGH or CRITICAL), OSV
-(0) and govulncheck (0 reachable) were run by hand with `make scan`; see the README's Scans section.
+yet; the release pipeline (`docker.yml`) pushes it only after a Trivy scan passes, then signs it keyless
+with cosign and attests an SBOM and provenance. Trivy, OSV and govulncheck run on every PR; see the
+README's Scans section for the one known exception (GO-2026-6094 in cel-go, not reachable).
 
 ## Left out on purpose
 

@@ -1,0 +1,14 @@
+# GO-2026-6094 (GHSA-gcjh-h69q-9w9g) is in github.com/google/cel-go v0.28.0, which
+# health-validation pins. This code never calls the affected function (govulncheck lists it
+# as not reachable), and cel-go stays at that pin so the catalog tools evaluate rules with
+# the same CEL as the serve they describe. Look again by the date below, or when the
+# health-validation pin moves.
+[[IgnoredVulns]]
+id = "GO-2026-6094"
+ignoreUntil = 2027-02-27
+reason = "cel-go pinned by health-validation; not reachable from this code"
+
+[[IgnoredVulns]]
+id = "GHSA-gcjh-h69q-9w9g"
+ignoreUntil = 2027-02-27
+reason = "Alias of GO-2026-6094; see above"

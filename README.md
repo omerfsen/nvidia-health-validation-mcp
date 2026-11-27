@@ -242,11 +242,15 @@ Everything below was proven only with synthetic measurements judged by health-va
 - **The binaries for anything but Linux on arm64 and amd64:** linux/amd64 ran on the build machine; the
   others are cross-compiled and not run.
 - **Evaluations run by a model.** `make evals` checks the answers mechanically; no model has answered them yet.
-- **Scans in CI:** `make scan` runs them by hand only (see below); no pipeline runs them yet.
+- **mcp-scanner in CI:** CI runs govulncheck, OSV and Trivy on every PR (below); Cisco `mcp-scanner` still
+  runs by hand only, with `make scan`.
 
 ## Scans
 
-Run by hand on 2026-11-26 with `make scan` (needs `govulncheck`, `osv-scanner`, `trivy` and `mcp-scanner`):
+Every PR and every push to `main` runs govulncheck on both modules (`ci.yml`), OSV on both `go.mod`
+files (`security.yml`) and Trivy on the dependencies and the image (`docker.yml`), Trivy with telemetry
+off. `make scan` runs the same by hand, plus Cisco `mcp-scanner` (needs `govulncheck`, `osv-scanner`,
+`trivy` and `mcp-scanner`). Last run by hand on 2026-11-26:
 
 | Scanner | Result |
 |---|---|
@@ -254,6 +258,11 @@ Run by hand on 2026-11-26 with `make scan` (needs `govulncheck`, `osv-scanner`, 
 | OSV-scanner, both modules | 0 vulnerabilities |
 | Trivy, image (Debian 13 distroless, 21.7 MB) | 0 HIGH or CRITICAL |
 | govulncheck | 0 reachable. It lists GO-2026-6094 in `github.com/google/cel-go` v0.28.0, which health-validation v0.4.0-rc.1 pins and this code never calls. It is kept at that pin so the catalog tools evaluate rules with the same CEL as the serve they describe. |
+
+**The one known exception.** OSV has no reachability check, so it reports GO-2026-6094 (GHSA-gcjh-h69q-9w9g)
+and would fail CI. Each module's `osv-scanner.toml` ignores it, with that reason, until 2027-02-27; look
+again then, or when the health-validation pin moves. govulncheck needs no exception: it fails only on what
+the code can reach.
 
 Every step, failure and dead end is in [docs/build-log.md](docs/build-log.md).
 

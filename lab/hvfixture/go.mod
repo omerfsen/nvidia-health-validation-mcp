@@ -1,6 +1,6 @@
 module github.com/omerfsen/nvidia-health-validation-mcp/lab/hvfixture
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/dsx-ai-factory/health-validation v0.4.0-rc.1

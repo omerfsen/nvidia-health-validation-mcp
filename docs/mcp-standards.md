@@ -98,7 +98,8 @@ Details, and what was left out on purpose: [security.md](security.md).
 - **Evaluations:** [docs/evals/evals.xml](evals/evals.xml) has 10 questions in the `mcp-builder` format.
   `make evals` checks each answer through the tools; no model has answered them yet.
 - **Cisco `mcp-scanner`** (YARA and schema): 5 tools, all safe. Trivy, OSV and govulncheck: clean but for
-  one unreachable cel-go advisory from health-validation's pin. Run by hand with `make scan`, not in CI.
+  one unreachable cel-go advisory from health-validation's pin. Trivy, OSV and govulncheck run in CI on every PR;
+  `mcp-scanner` by hand with `make scan`.
 - **MCPB bundle:** not built. The image is what the Registry would list.
 - **Other MCP clients:** only the Go SDK's client has been used.
 
