@@ -1,0 +1,51 @@
+# .github/cicd/config - this repo's settings for the pipelines vendored from
+# https://github.com/omerfsen/cicd. Plain KEY=value lines, read by the
+# workflows from main (so a PR cannot change them for itself).
+
+PIPELINES=release-please pr-title security docker go-binaries
+
+# release-please: bumps VERSION_FILES and tags vX.Y.Z through the release App, and
+# the tag publishes the image and the binaries.
+VERSION_FILES=version.txt
+RELEASE_PLEASE_ENABLED=true
+RELEASE_PLEASE_RUNNER=ubuntu-24.04
+
+PR_TITLE_ENABLED=true
+PR_TITLE_RUNNER=ubuntu-24.04
+
+# security: gitleaks, osv-scanner on both go.mod files (the root and lab/hvfixture),
+# semgrep.
+SECURITY_ENABLED=true
+SECURITY_RUNNER=ubuntu-24.04
+
+# docker: scan on every PR; on main and vX.Y.Z tags push to Docker Hub only after the
+# scan passes, then sign and attest. DOCKERHUB_USERNAME and DOCKERHUB_TOKEN are in the
+# registry environment, limited to main and v* tags.
+DOCKER_ENABLED=true
+DOCKER_RUNNER=ubuntu-24.04
+DOCKER_REGISTRY=docker.io/omerfsen
+DOCKER_IMAGE=nvidia-health-validation-mcp
+DOCKER_ENVIRONMENT=registry
+DOCKER_SCAN_SEVERITY=CRITICAL,HIGH
+DOCKER_SCAN_BLOCKS=true
+DOCKER_SIGN=true
+DOCKER_ATTEST=true
+# Every image is built from scratch, so a release holds nothing from an earlier run.
+DOCKER_CACHE=false
+# The image holds only cmd/ and pkg/; a change to docs, tests or the lab builds nothing.
+DOCKER_PATHS_IGNORE=docs/*,tests/*,lab/*,skills/*,*.md
+
+# go-binaries: go vet, go test -race and a build of every target on each PR, with the binaries
+# as a workflow artifact. A vX.Y.Z tag attaches them to its release, in the "binaries"
+# environment, limited to v* tags.
+GO_BINARIES_ENABLED=true
+GO_BINARIES_RUNNER=ubuntu-24.04
+GO_BINARIES_PACKAGE=./cmd/nvidia-health-validation-mcp
+GO_BINARIES_TARGETS=linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
+GO_BINARIES_ENVIRONMENT=binaries
+
+# ci: this repo's own checks in .github/workflows/ci.yml, not vendored: golangci-lint,
+# make evals, make e2e (the fixture), generated docs up to date, govulncheck on both
+# modules. The kill switch for all of them.
+CI_ENABLED=true
+CI_RUNNER=ubuntu-24.04
