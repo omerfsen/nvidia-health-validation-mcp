@@ -370,3 +370,20 @@ coverage wording; they were not run again.
 - Cisco `mcp-scanner` with YARA and schema: 5 tools, all safe.
 - Re-ran `make e2e-serve` on the build machine (`READY_LOW_COVERAGE`) and the Pi (`DRAIN`) after the second
   review changed the coverage wording; results rewritten.
+
+## 2026-11-27: CI
+
+- Vendored release-please, pr-title, security, docker and go-binaries from cicd v0.15.0, and added `ci.yml`
+  for lint, generated docs, `make e2e`, `make evals` and govulncheck on both modules.
+- cicd's Trivy steps left telemetry on. Set `TRIVY_DISABLE_TELEMETRY` in the vendored docker and go-binaries
+  workflows, the same change as cicd PR #40; re-vendor once it is released.
+- First CI run: govulncheck found GO-2026-6859 in `net/http` reachable under Go 1.27.3, the version `go.mod`
+  named and CI built with. Raised both modules to `go 1.27.4`, which the Dockerfile already used.
+- OSV failed on GO-2026-6094 in cel-go, which govulncheck shows as not reachable. Locally `make scan` was
+  clean; CI's osv-scanner 2.6.0 reports it. Ignored in each module's `osv-scanner.toml` until 2027-02-27.
+- go-binaries failed on the first PR: the pipelines read `.github/cicd/config` from `main`, which had none,
+  so it built the repo root (`PACKAGE=.`). It passes once the config is on `main`.
+- `make e2e` rewrites `docs/test-results/fixture` with fresh markers and timings, so CI uploads it and does
+  not compare it. `make docs` is compared, and was clean.
+- Not in CI: `mcp-scanner`, `make test-race-amd64` (go-binaries runs `go test -race` on amd64 runners), and
+  `make e2e-serve`, which needs a real serve.

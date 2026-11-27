@@ -123,7 +123,11 @@ tests on purpose. Update the version in the README and `docs/security.md`.
 - Conventional Commits with a short one-line subject, normally no body. No AI attribution anywhere.
 - One branch and one PR per change, squash-merged once every check passes.
 - `feat`, `fix`, `perf`, `security`, `revert` and `deps` cut a release through release-please;
-  `docs`, `ci`, `test`, `chore` and `refactor` do not. CI workflows are not vendored yet.
+  `docs`, `ci`, `test`, `chore` and `refactor` do not.
+- CI: five pipelines vendored from `omerfsen/cicd` (`release-please`, `pr-title`, `security`, `docker`,
+  `go-binaries`; never edit them here, re-run cicd's `install.sh`) and this repo's own `ci.yml` (lint,
+  generated docs, fixture e2e, evals, govulncheck). Settings and every kill switch are in
+  `.github/cicd/config`, read from `main`. `osv-scanner.toml` in each module holds the one OSV exception.
 - After a release, record it in a `docs:` PR: the image digest in the README and `docs/security.md`, the
   version in `server.json`, and what was verified in `docs/build-log.md`.
 - Add what failed and why to `docs/build-log.md`, dead ends included. Say what was not tested.

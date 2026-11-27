@@ -1,0 +1,13 @@
+repo https://github.com/omerfsen/cicd
+ref v0.15.0
+commit 4b7d70d1d0e5cd0383c1f823328873a6b8725ed4
+file 6849b6f210030c13b7e606d782bebd4087038444f2f2f995e10d9054f07d2c1a .github/workflows/release-please.yml
+file d39858aa5b5626b36885dc0c33b1792ba2dbfeaf919fde76d12dad0736b02329 .github/cicd/release-please/check-release-pr.sh
+file f50d5d105dc5c306b7d7e97cc4450c2a740c1b568ff886c72d2a7358fb319326 .github/workflows/pr-title.yml
+file 90f0154d69a21205f5a2f96a8ecda2a409f9e1c0eed0d8c17f84acbbc4e64bf5 .github/workflows/security.yml
+file c2e238ab8fc6d53dd6851879fa8ef826f659855bdfb86bbab1c465ef70e99ec2 .github/cicd/security/security.sh
+file 526cd0fba0b6ae659c7abf596dec1f81fa7153aa68b58e9ce72bb98da3d7a14a .github/workflows/docker.yml
+file a91c65a3b4a4159e326ac67fef2fb3f9656968347d21da46836200e2d9d3d076 .github/cicd/docker/image.sh
+file ed039723267ed76518f3f8c9ebf385edd6444431305cb507b9423a4a090e9b51 .github/workflows/go-binaries.yml
+file ff3b78b6d9e6f2022195c3f426dba498868fa480a6d81d1d4ab9c293d8f5b04f .github/cicd/go-binaries/binaries.sh
+file d7c2ab3aec1c1a822ad9a61e319e0b09a60979d14c46a326664636a88e4899e4 .github/cicd/actions/azure-login/action.yml
