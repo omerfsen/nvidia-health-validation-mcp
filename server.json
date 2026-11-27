@@ -1,0 +1,90 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.omerfsen/nvidia-health-validation-mcp",
+  "title": "NVIDIA Health Validation",
+  "description": "Read-only NVIDIA health-validation: its check catalog and, if allowed, one GPU node's verdict.",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/omerfsen/nvidia-health-validation-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "docker.io/omerfsen/nvidia-health-validation-mcp:0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--network",
+          "value": "host",
+          "description": "Share the host's network namespace, where serve listens on loopback. Use container:<serve container> when serve runs in a container without host networking."
+        },
+        {
+          "type": "named",
+          "name": "--read-only",
+          "value": "true"
+        },
+        {
+          "type": "named",
+          "name": "--cap-drop",
+          "value": "ALL"
+        },
+        {
+          "type": "named",
+          "name": "--security-opt",
+          "value": "no-new-privileges"
+        },
+        {
+          "type": "named",
+          "name": "--memory",
+          "value": "128m"
+        },
+        {
+          "type": "named",
+          "name": "--cpus",
+          "value": "1"
+        },
+        {
+          "type": "named",
+          "name": "--pids-limit",
+          "value": "64"
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "HV_MCP_SERVE_HOST",
+          "description": "Where health-validation serve listens: 127.0.0.1 or ::1. Default 127.0.0.1.",
+          "isRequired": false
+        },
+        {
+          "name": "HV_MCP_SERVE_PORT",
+          "description": "Serve's port, 1024 to 65535. Default 8080.",
+          "isRequired": false
+        },
+        {
+          "name": "HV_MCP_SERVE_UID",
+          "description": "If set, the numeric user ID that must own serve's listening socket. Linux only. Off when unset.",
+          "isRequired": false
+        },
+        {
+          "name": "HV_MCP_ALLOW_EVALUATE",
+          "description": "Exactly true adds hv_get_verdict, which runs a real evaluation on the node. Off when unset.",
+          "isRequired": false
+        },
+        {
+          "name": "HV_MCP_EVALUATE_INTERVAL_SECONDS",
+          "description": "At most one evaluation per this many seconds, 5 to 600. Default 10.",
+          "isRequired": false
+        },
+        {
+          "name": "HV_MCP_EVALUATE_TIMEOUT_SECONDS",
+          "description": "How long to wait for a verdict, 10 to 900. Default 150.",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}
